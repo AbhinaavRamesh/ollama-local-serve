@@ -114,6 +114,8 @@ open http://localhost:3000
 | API Server | 8000 | FastAPI monitoring API |
 | Dashboard | 3000 | React monitoring dashboard |
 
+> **Note:** The API Server is named `ollama-monitor` in docker-compose files and commands. This naming reflects the service's primary purpose as a monitoring API for Ollama. When you see references to `ollama-monitor` in docker commands or compose files, this refers to the API Server listed above.
+
 ### Make Commands
 
 #### Core Commands
@@ -142,9 +144,9 @@ make check-deps               # Check if required dependencies are installed
 
 #### Selective Service Startup (Toggle Databases)
 ```bash
-make up-minimal      # Start only Ollama + API (no databases)
-make up-clickhouse   # Start with ClickHouse only (no PostgreSQL)
-make up-postgres     # Start with PostgreSQL only (no ClickHouse)
+make up-minimal      # Start only Ollama + API (no databases, no frontend)
+make up-clickhouse   # Start full stack with ClickHouse (includes frontend)
+make up-postgres     # Start full stack with PostgreSQL (includes frontend)
 
 # Or use environment variables to toggle services (with up-selective target):
 make up-selective ENABLE_CLICKHOUSE=false    # Disable ClickHouse
