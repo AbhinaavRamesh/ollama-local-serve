@@ -360,9 +360,10 @@ up-selective:
 	docker-compose up -d $(strip $(get_services))
 
 # Start minimal - only Ollama and API (no databases, no frontend)
+# Note: The API service is named 'ollama-monitor' in docker-compose
 up-minimal:
 	@echo "Starting minimal setup (Ollama + API only)..."
-	@echo "Note: API will run without database exporters"
+	@echo "Note: API (ollama-monitor service) will run without database exporters"
 	docker-compose up -d ollama
 	@echo "Waiting for Ollama to be healthy..."
 	@timeout=60; \
@@ -377,11 +378,13 @@ up-minimal:
 	EXPORTER_TYPE=none docker-compose up -d ollama-monitor
 
 # Start with ClickHouse only (no PostgreSQL)
+# Note: The API service is named 'ollama-monitor' in docker-compose
 up-clickhouse:
 	@echo "Starting with ClickHouse only..."
 	EXPORTER_TYPE=clickhouse docker-compose up -d ollama clickhouse ollama-monitor frontend
 
 # Start with PostgreSQL only (no ClickHouse)
+# Note: The API service is named 'ollama-monitor' in docker-compose
 up-postgres:
 	@echo "Starting with PostgreSQL only..."
 	EXPORTER_TYPE=postgres docker-compose up -d ollama postgres ollama-monitor frontend

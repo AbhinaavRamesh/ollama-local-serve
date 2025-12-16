@@ -114,6 +114,8 @@ open http://localhost:3000
 | API Server | 8000 | FastAPI monitoring API |
 | Dashboard | 3000 | React monitoring dashboard |
 
+> **Note:** The API Server is named `ollama-monitor` in docker-compose files and commands. This naming reflects the service's primary purpose as a monitoring API for Ollama. When you see references to `ollama-monitor` in docker commands or compose files, this refers to the API Server listed above.
+
 ### Make Commands
 
 #### Core Commands
