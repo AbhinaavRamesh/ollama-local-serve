@@ -1,0 +1,41 @@
+version: '3.8'
+
+# =============================================================================
+# Ollama Local Serve - Development Docker Compose
+# =============================================================================
+# Use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # ---------------------------------------------------------------------------
+  # Ollama Monitor - API Service (Development)
+  # ---------------------------------------------------------------------------
+  ollama-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      # Mount source code for hot reloading
+      - ./ollama_local_serve:/app/ollama_local_serve:ro
+    environment:
+      - DEBUG=true
+      - API_RELOAD=true
+      - LOG_LEVEL=DEBUG
+    command: ["python", "-m", "uvicorn", "ollama_local_serve.api.server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # ---------------------------------------------------------------------------
+  # Frontend - React Dashboard (Development)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      # Mount source code for hot reloading
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+      - ./frontend/index.html:/app/index.html:ro
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

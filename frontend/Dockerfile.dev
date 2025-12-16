@@ -1,0 +1,24 @@
+# Development Dockerfile for Ollama Monitor React Dashboard
+# Includes hot module reloading support
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source files
+COPY . .
+
+# Environment variables
+ENV NODE_ENV=development
+
+# Expose Vite dev server port
+EXPOSE 5173
+
+# Run Vite dev server with HMR
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

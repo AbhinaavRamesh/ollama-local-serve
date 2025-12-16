@@ -1,0 +1,221 @@
+version: '3.8'
+
+# =============================================================================
+# Ollama Local Serve - Docker Compose Stack
+# =============================================================================
+# Complete monitoring stack with Ollama, databases, API, and dashboard
+
+services:
+  # ---------------------------------------------------------------------------
+  # Ollama - LLM Service
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    deploy:
+      resources:
+        limits:
+          memory: ${OLLAMA_MEMORY_LIMIT:-8g}
+          cpus: '${OLLAMA_CPU_LIMIT:-4.0}'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ollama-network
+    # Uncomment for GPU support (NVIDIA)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ---------------------------------------------------------------------------
+  # ClickHouse - Time-series Database
+  # ---------------------------------------------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native protocol
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      - ./schemas/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      - CLICKHOUSE_DB=${CLICKHOUSE_DATABASE:-ollama_metrics}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-default}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    deploy:
+      resources:
+        limits:
+          memory: ${CLICKHOUSE_MEMORY_LIMIT:-4g}
+          cpus: '${CLICKHOUSE_CPU_LIMIT:-2.0}'
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ollama-network
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL with TimescaleDB - Relational Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schemas/postgres_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      - POSTGRES_DB=${POSTGRES_DATABASE:-ollama_metrics}
+      - POSTGRES_USER=${POSTGRES_USER:-ollama}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ollama_secure_password_change_me}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEMORY_LIMIT:-1g}
+          cpus: '${POSTGRES_CPU_LIMIT:-1.0}'
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ollama} -d ${POSTGRES_DATABASE:-ollama_metrics}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ollama-network
+
+  # ---------------------------------------------------------------------------
+  # Ollama Monitor - API Service
+  # ---------------------------------------------------------------------------
+  ollama-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ollama-monitor
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Ollama connection
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-120}
+      # Instrumentation
+      - ENABLE_INSTRUMENTATION=${ENABLE_INSTRUMENTATION:-true}
+      - EXPORTER_TYPE=${EXPORTER_TYPE:-clickhouse}
+      - METRICS_EXPORT_INTERVAL=${METRICS_EXPORT_INTERVAL:-5}
+      - SERVICE_NAME=${SERVICE_NAME:-ollama-local-serve}
+      # ClickHouse
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-ollama_metrics}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-default}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-}
+      # PostgreSQL
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=${POSTGRES_DATABASE:-ollama_metrics}
+      - POSTGRES_USER=${POSTGRES_USER:-ollama}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ollama_secure_password_change_me}
+      - USE_TIMESCALE=${USE_TIMESCALE:-true}
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      ollama:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${API_MEMORY_LIMIT:-512m}
+          cpus: '${API_CPU_LIMIT:-1.0}'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ollama-network
+
+  # ---------------------------------------------------------------------------
+  # Frontend - React Dashboard
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-/api}
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      ollama-monitor:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: ${FRONTEND_MEMORY_LIMIT:-128m}
+          cpus: '${FRONTEND_CPU_LIMIT:-0.5}'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ollama-network
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  ollama-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  ollama_data:
+    driver: local
+  clickhouse_data:
+    driver: local
+  clickhouse_logs:
+    driver: local
+  postgres_data:
+    driver: local
