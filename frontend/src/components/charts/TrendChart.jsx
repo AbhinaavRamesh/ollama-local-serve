@@ -2,7 +2,6 @@
  * Trend chart component with time range selection.
  */
 
-import { useState } from 'react'
 import { clsx } from 'clsx'
 import {
   LineChart,
