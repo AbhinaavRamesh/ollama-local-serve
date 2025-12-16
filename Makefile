@@ -15,7 +15,7 @@ UNAME_S := $(shell uname -s)
 
 .PHONY: help build up down restart logs shell clean dev prod pull status health init \
         install install-python install-frontend install-db-clients install-clickhouse-client install-postgres-client \
-        up-minimal up-clickhouse up-postgres check-deps
+        up-minimal up-clickhouse up-postgres check-deps install-python-venv run-api run-frontend run-local
 
 # Default target
 help:
