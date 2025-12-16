@@ -146,10 +146,10 @@ make up-minimal      # Start only Ollama + API (no databases)
 make up-clickhouse   # Start with ClickHouse only (no PostgreSQL)
 make up-postgres     # Start with PostgreSQL only (no ClickHouse)
 
-# Or use environment variables to toggle services:
-make up ENABLE_CLICKHOUSE=false    # Disable ClickHouse
-make up ENABLE_POSTGRES=false      # Disable PostgreSQL
-make up ENABLE_FRONTEND=false      # Disable frontend dashboard
+# Or use environment variables to toggle services (with up-selective target):
+make up-selective ENABLE_CLICKHOUSE=false    # Disable ClickHouse
+make up-selective ENABLE_POSTGRES=false      # Disable PostgreSQL
+make up-selective ENABLE_FRONTEND=false      # Disable frontend dashboard
 ```
 
 #### Local Development (without Docker)
