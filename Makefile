@@ -407,4 +407,6 @@ run-local:
 	@echo "Starting local development servers..."
 	@echo "API will run on http://localhost:8000"
 	@echo "Frontend will run on http://localhost:5173"
-	@make -j2 run-api run-frontend
+	@echo "Note: This target requires 'concurrently' (install with 'npm install -g concurrently' or as a dev dependency)."
+	npx concurrently --names "API,FRONTEND" --prefix-colors "blue,magenta" \
+		"make run-api" "make run-frontend"
