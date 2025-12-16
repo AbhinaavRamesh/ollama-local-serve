@@ -386,7 +386,7 @@ up-postgres:
 run-api:
 	@echo "Starting API server locally..."
 	@echo "Make sure you have dependencies installed: make install-python"
-	cd src && uvicorn api.server:app --reload --host 0.0.0.0 --port 8000
+	uvicorn ollama_local_serve.api.server:app --reload --host 0.0.0.0 --port 8000
 
 # Run frontend locally (requires dependencies installed)
 run-frontend:
