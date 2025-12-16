@@ -42,6 +42,7 @@ help:
 	@echo "Dependency Installation:"
 	@echo "  install              - Install all dependencies (Python + Frontend)"
 	@echo "  install-python       - Install Python dependencies"
+	@echo "  install-python-venv  - Install Python deps in virtual environment"
 	@echo "  install-frontend     - Install frontend (Node.js) dependencies"
 	@echo "  install-db-clients   - Install database CLI clients (ClickHouse + PostgreSQL)"
 	@echo "  install-clickhouse-client - Install ClickHouse client only"
