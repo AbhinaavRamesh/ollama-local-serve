@@ -365,7 +365,15 @@ up-minimal:
 	@echo "Note: API will run without database exporters"
 	docker-compose up -d ollama
 	@echo "Waiting for Ollama to be healthy..."
-	@sleep 5
+	@timeout=60; \
+	while [ "$$(docker inspect -f '{{.State.Health.Status}}' ollama 2>/dev/null)" != "healthy" ]; do \
+	  if [ $$timeout -le 0 ]; then \
+	    echo "Timed out waiting for Ollama to become healthy."; \
+	    exit 1; \
+	  fi; \
+	  sleep 1; \
+	  timeout=$$((timeout - 1)); \
+	done
 	EXPORTER_TYPE=none docker-compose up -d ollama-monitor
 
 # Start with ClickHouse only (no PostgreSQL)
