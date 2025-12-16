@@ -13,6 +13,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Markdown
+claude_code_prompt.md
+
 # Distribution / packaging
 .Python
 build/
