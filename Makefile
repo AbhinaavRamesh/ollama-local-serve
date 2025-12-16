@@ -387,7 +387,7 @@ up-minimal:
 # Note: The API service is named 'ollama-monitor' in docker-compose
 up-clickhouse:
 	@echo "Starting with ClickHouse (Ollama + API + ClickHouse + frontend)..."
-	docker-compose up -d ollama clickhouse ollama-monitor frontend
+	EXPORTER_TYPE=clickhouse docker-compose up -d ollama clickhouse ollama-monitor frontend
 
 # Start with PostgreSQL (includes Ollama, API, PostgreSQL, and frontend)
 # Note: The API service is named 'ollama-monitor' in docker-compose
