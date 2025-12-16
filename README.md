@@ -142,9 +142,9 @@ make check-deps               # Check if required dependencies are installed
 
 #### Selective Service Startup (Toggle Databases)
 ```bash
-make up-minimal      # Start only Ollama + API (no databases)
-make up-clickhouse   # Start with ClickHouse only (no PostgreSQL)
-make up-postgres     # Start with PostgreSQL only (no ClickHouse)
+make up-minimal      # Start only Ollama + API (no databases, no frontend)
+make up-clickhouse   # Start full stack with ClickHouse (includes frontend)
+make up-postgres     # Start full stack with PostgreSQL (includes frontend)
 
 # Or use environment variables to toggle services (with up-selective target):
 make up-selective ENABLE_CLICKHOUSE=false    # Disable ClickHouse

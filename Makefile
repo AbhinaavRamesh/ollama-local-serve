@@ -49,9 +49,9 @@ help:
 	@echo "  check-deps           - Check if required dependencies are installed"
 	@echo ""
 	@echo "Selective Service Startup (toggle databases):"
-	@echo "  up-minimal           - Start only Ollama + API (no databases)"
-	@echo "  up-clickhouse        - Start with ClickHouse only (no PostgreSQL)"
-	@echo "  up-postgres          - Start with PostgreSQL only (no ClickHouse)"
+	@echo "  up-minimal           - Start only Ollama + API (no databases, no frontend)"
+	@echo "  up-clickhouse        - Start full stack with ClickHouse (includes frontend)"
+	@echo "  up-postgres          - Start full stack with PostgreSQL (includes frontend)"
 	@echo ""
 	@echo "  You can also toggle services via environment variables:"
 	@echo "    make up ENABLE_CLICKHOUSE=false"
@@ -368,14 +368,14 @@ up-minimal:
 	@sleep 5
 	EXPORTER_TYPE=none docker-compose up -d ollama-monitor
 
-# Start with ClickHouse only (no PostgreSQL)
+# Start with ClickHouse (includes Ollama, API, ClickHouse, and frontend)
 up-clickhouse:
-	@echo "Starting with ClickHouse only..."
+	@echo "Starting with ClickHouse (Ollama + API + ClickHouse + frontend)..."
 	docker-compose up -d ollama clickhouse ollama-monitor frontend
 
-# Start with PostgreSQL only (no ClickHouse)
+# Start with PostgreSQL (includes Ollama, API, PostgreSQL, and frontend)
 up-postgres:
-	@echo "Starting with PostgreSQL only..."
+	@echo "Starting with PostgreSQL (Ollama + API + PostgreSQL + frontend)..."
 	EXPORTER_TYPE=postgres docker-compose up -d ollama postgres ollama-monitor frontend
 
 # =============================================================================
