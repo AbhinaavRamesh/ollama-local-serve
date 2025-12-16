@@ -116,6 +116,7 @@ open http://localhost:3000
 
 ### Make Commands
 
+#### Core Commands
 ```bash
 make help          # Show all available commands
 make init          # Initialize environment
@@ -125,6 +126,37 @@ make logs          # View logs
 make health        # Check service health
 make dev           # Start development environment
 make clean         # Remove all containers and volumes
+```
+
+#### Dependency Installation
+```bash
+make install                  # Install all dependencies (Python + Frontend)
+make install-python           # Install Python dependencies
+make install-python-venv      # Install Python deps in virtual environment
+make install-frontend         # Install frontend (Node.js) dependencies
+make install-db-clients       # Install database CLI clients (ClickHouse + PostgreSQL)
+make install-clickhouse-client # Install ClickHouse client only
+make install-postgres-client  # Install PostgreSQL client only
+make check-deps               # Check if required dependencies are installed
+```
+
+#### Selective Service Startup (Toggle Databases)
+```bash
+make up-minimal      # Start only Ollama + API (no databases)
+make up-clickhouse   # Start with ClickHouse only (no PostgreSQL)
+make up-postgres     # Start with PostgreSQL only (no ClickHouse)
+
+# Or use environment variables to toggle services:
+make up ENABLE_CLICKHOUSE=false    # Disable ClickHouse
+make up ENABLE_POSTGRES=false      # Disable PostgreSQL
+make up ENABLE_FRONTEND=false      # Disable frontend dashboard
+```
+
+#### Local Development (without Docker)
+```bash
+make run-api        # Run API server locally (port 8000)
+make run-frontend   # Run frontend dev server locally (port 5173)
+make run-local      # Run both API and frontend in parallel
 ```
 
 ## Configuration
@@ -321,15 +353,25 @@ except HealthCheckError as e:
 git clone https://github.com/AbhinaavRamesh/ollama-local-serve.git
 cd ollama-local-serve
 
-# Create virtual environment
+# Check what dependencies you have installed
+make check-deps
+
+# Option 1: Install all dependencies at once
+make install
+
+# Option 2: Use virtual environment for Python
+make install-python-venv   # Creates .venv and installs deps
+source .venv/bin/activate  # Activate the virtual environment
+make install-frontend      # Install frontend deps
+
+# Option 3: Manual setup
 python -m venv venv
 source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-
-# Install development dependencies
 pip install -e ".[dev]"
-
-# Install frontend dependencies
 cd frontend && npm install
+
+# Optional: Install database clients for local debugging
+make install-db-clients
 ```
 
 ### Code Quality
@@ -351,11 +393,18 @@ pytest
 ### Development Mode
 
 ```bash
-# Start development stack with hot reloading
+# Option 1: Use Docker (hot reloading enabled)
 make dev
 
 # Or manually:
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+# Option 2: Run locally without Docker
+make run-local   # Runs both API and frontend
+
+# Or run separately:
+make run-api       # API on http://localhost:8000
+make run-frontend  # Frontend on http://localhost:5173
 ```
 
 ## API Reference
