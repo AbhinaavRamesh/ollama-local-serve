@@ -379,7 +379,7 @@ up-minimal:
 # Start with ClickHouse only (no PostgreSQL)
 up-clickhouse:
 	@echo "Starting with ClickHouse only..."
-	docker-compose up -d ollama clickhouse ollama-monitor frontend
+	EXPORTER_TYPE=clickhouse docker-compose up -d ollama clickhouse ollama-monitor frontend
 
 # Start with PostgreSQL only (no ClickHouse)
 up-postgres:
