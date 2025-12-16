@@ -246,7 +246,7 @@ install-python:
 install-python-venv:
 	@echo "Creating virtual environment and installing Python dependencies..."
 	@python3 -m venv .venv
-	@. .venv/bin/activate && pip install -r requirements-api.txt
+	@source .venv/bin/activate && pip install -r requirements-api.txt
 	@echo "Python dependencies installed in .venv!"
 	@echo "Activate with: source .venv/bin/activate"
 
