@@ -42,6 +42,7 @@ help:
 	@echo "Dependency Installation:"
 	@echo "  install              - Install all dependencies (Python + Frontend)"
 	@echo "  install-python       - Install Python dependencies"
+	@echo "  install-python-venv  - Install Python deps in virtual environment"
 	@echo "  install-frontend     - Install frontend (Node.js) dependencies"
 	@echo "  install-db-clients   - Install database CLI clients (ClickHouse + PostgreSQL)"
 	@echo "  install-clickhouse-client - Install ClickHouse client only"
@@ -57,6 +58,11 @@ help:
 	@echo "    make up ENABLE_CLICKHOUSE=false"
 	@echo "    make up ENABLE_POSTGRES=false"
 	@echo "    make up ENABLE_FRONTEND=false"
+	@echo ""
+	@echo "Local Development (without Docker):"
+	@echo "  run-api              - Run API server locally (port 8000)"
+	@echo "  run-frontend         - Run frontend dev server locally (port 5173)"
+	@echo "  run-local            - Run both API and frontend in parallel"
 	@echo ""
 	@echo "Service-specific targets:"
 	@echo "  logs-api       - View API service logs"
@@ -360,20 +366,23 @@ up-selective:
 	docker-compose up -d $(strip $(get_services))
 
 # Start minimal - only Ollama and API (no databases, no frontend)
+# Note: The API service is named 'ollama-monitor' in docker-compose
 up-minimal:
 	@echo "Starting minimal setup (Ollama + API only)..."
-	@echo "Note: API will run without database exporters"
+	@echo "Note: API (ollama-monitor service) will run without database exporters"
 	docker-compose up -d ollama
 	@echo "Waiting for Ollama to be healthy..."
 	@sleep 5
 	EXPORTER_TYPE=none docker-compose up -d ollama-monitor
 
 # Start with ClickHouse (includes Ollama, API, ClickHouse, and frontend)
+# Note: The API service is named 'ollama-monitor' in docker-compose
 up-clickhouse:
 	@echo "Starting with ClickHouse (Ollama + API + ClickHouse + frontend)..."
 	docker-compose up -d ollama clickhouse ollama-monitor frontend
 
 # Start with PostgreSQL (includes Ollama, API, PostgreSQL, and frontend)
+# Note: The API service is named 'ollama-monitor' in docker-compose
 up-postgres:
 	@echo "Starting with PostgreSQL (Ollama + API + PostgreSQL + frontend)..."
 	EXPORTER_TYPE=postgres docker-compose up -d ollama postgres ollama-monitor frontend
