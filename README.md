@@ -405,7 +405,8 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 make run-local   # Runs both API and frontend
 
 # Or run separately:
-make run-api       # API on http://localhost:8000
+# Run API locally (update the module path if needed):
+python -m ollama_local_serve.api  # API on http://localhost:8000
 make run-frontend  # Frontend on http://localhost:5173
 ```
 

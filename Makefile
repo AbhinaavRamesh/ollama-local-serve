@@ -372,7 +372,15 @@ up-minimal:
 	@echo "Note: API (ollama-monitor service) will run without database exporters"
 	docker-compose up -d ollama
 	@echo "Waiting for Ollama to be healthy..."
-	@sleep 5
+	@timeout=60; \
+	while [ "$$(docker inspect -f '{{.State.Health.Status}}' ollama 2>/dev/null)" != "healthy" ]; do \
+	  if [ $$timeout -le 0 ]; then \
+	    echo "Timed out waiting for Ollama to become healthy."; \
+	    exit 1; \
+	  fi; \
+	  sleep 1; \
+	  timeout=$$((timeout - 1)); \
+	done
 	EXPORTER_TYPE=none docker-compose up -d ollama-monitor
 
 # Start with ClickHouse (includes Ollama, API, ClickHouse, and frontend)
@@ -408,4 +416,6 @@ run-local:
 	@echo "Starting local development servers..."
 	@echo "API will run on http://localhost:8000"
 	@echo "Frontend will run on http://localhost:5173"
-	@make -j2 run-api run-frontend
+	@echo "Note: This target requires 'concurrently' (install with 'npm install -g concurrently' or as a dev dependency)."
+	npx concurrently --names "API,FRONTEND" --prefix-colors "blue,magenta" \
+		"make run-api" "make run-frontend"
