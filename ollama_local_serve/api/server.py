@@ -656,38 +656,39 @@ def _register_routes(app: FastAPI) -> None:
         summary="Search Ollama model library",
         description="Search for models in the Ollama library.",
     )
-    async def search_ollama_library(q: str = Query("", description="Search query")):
-        """Search the Ollama library (returns popular models)."""
-        # Ollama doesn't have a public search API, so we return a curated list
-        popular_models = [
-            {"name": "llama3.2", "description": "Meta's Llama 3.2 - latest and most capable", "size": "1B-90B"},
-            {"name": "llama3.1", "description": "Meta's Llama 3.1 - powerful open model", "size": "8B-405B"},
-            {"name": "gemma3:1b", "description": "Google's Gemma 3 - compact 1B model", "size": "1B"},
-            {"name": "gemma3:4b", "description": "Google's Gemma 3 - balanced 4B model", "size": "4B"},
-            {"name": "gemma2", "description": "Google's Gemma 2 model", "size": "2B-27B"},
-            {"name": "nemotron-mini", "description": "NVIDIA Nemotron Mini - efficient small model", "size": "4B"},
-            {"name": "mistral", "description": "Mistral AI's 7B model - fast and efficient", "size": "7B"},
-            {"name": "mixtral", "description": "Mistral's mixture of experts model", "size": "8x7B"},
-            {"name": "phi3", "description": "Microsoft's small but capable model", "size": "3.8B"},
-            {"name": "phi3:mini", "description": "Microsoft Phi-3 Mini", "size": "3.8B"},
-            {"name": "qwen2.5", "description": "Alibaba's Qwen 2.5 model", "size": "0.5B-72B"},
-            {"name": "qwen2.5:1.5b", "description": "Alibaba's Qwen 2.5 - tiny variant", "size": "1.5B"},
-            {"name": "codellama", "description": "Meta's code-specialized Llama", "size": "7B-34B"},
-            {"name": "deepseek-coder", "description": "DeepSeek's coding model", "size": "1.3B-33B"},
-            {"name": "deepseek-coder-v2", "description": "DeepSeek Coder V2 - improved coding", "size": "16B-236B"},
-            {"name": "starcoder2", "description": "BigCode's StarCoder 2", "size": "3B-15B"},
-            {"name": "tinyllama", "description": "Tiny but fast for testing", "size": "1.1B"},
-            {"name": "neural-chat", "description": "Intel's neural chat model", "size": "7B"},
-            {"name": "starling-lm", "description": "Berkeley's Starling model", "size": "7B"},
-            {"name": "dolphin-mixtral", "description": "Uncensored Mixtral variant", "size": "8x7B"},
-            {"name": "wizard-vicuna", "description": "Wizard + Vicuna combined", "size": "13B"},
-        ]
-
-        if q:
-            q_lower = q.lower()
-            filtered = [m for m in popular_models if q_lower in m["name"].lower() or q_lower in m["description"].lower()]
-            return {"models": filtered}
-        return {"models": popular_models}
+    async def search_ollama_library(
+        q: str = Query("", description="Search query"),
+        db: DatabaseManager = Depends(get_database_manager),
+    ):
+        """Search the Ollama library (returns models from database repository)."""
+        try:
+            # Get all models from the database repository
+            repo_data = await db.get_model_repository()
+            all_models = repo_data.get("models", [])
+            
+            # Transform database models to the expected format
+            models = [
+                {
+                    "name": model["model_name"],
+                    "description": model.get("description", ""),
+                    "size": model.get("size_label", ""),
+                }
+                for model in all_models
+            ]
+            
+            # Filter by search query if provided
+            if q:
+                q_lower = q.lower()
+                models = [
+                    m for m in models
+                    if q_lower in m["name"].lower() or q_lower in m["description"].lower()
+                ]
+            
+            return {"models": models}
+        except Exception as e:
+            logger.error(f"Failed to fetch models from repository: {e}")
+            # Return empty list on error
+            return {"models": []}
 
     # ========================================================================
     # Model Repository Endpoints
