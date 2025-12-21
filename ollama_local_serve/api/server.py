@@ -171,7 +171,6 @@ def _register_routes(app: FastAPI) -> None:
     # ========================================================================
 
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-    DEFAULT_CHAT_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
 
     @app.get(
         "/api/stats/current",
