@@ -189,49 +189,43 @@ class DatabaseManager:
             return self._get_empty_stats()
 
     async def _get_current_stats_clickhouse(self) -> Dict[str, Any]:
-        """Get current stats from ClickHouse."""
+        """Get current stats from ClickHouse request_logs table."""
         try:
-            # Get totals
+            # Get totals from request_logs
             totals_query = """
                 SELECT
-                    sum(CASE WHEN metric_name = 'ollama_tokens_generated_total'
-                        THEN metric_value ELSE 0 END) as tokens_total,
-                    sum(CASE WHEN metric_name = 'ollama_errors_total'
-                        THEN metric_value ELSE 0 END) as error_count,
-                    count(CASE WHEN metric_name = 'ollama_requests_total'
-                        THEN 1 ELSE NULL END) as request_count,
-                    avg(CASE WHEN metric_name = 'ollama_request_latency_ms'
-                        THEN metric_value ELSE NULL END) as avg_latency_ms
-                FROM ollama_metrics
+                    COALESCE(SUM(tokens_generated), 0) as tokens_total,
+                    COUNT(*) as request_count,
+                    COALESCE(AVG(latency_ms), 0) as avg_latency_ms,
+                    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count
+                FROM request_logs
             """
             totals = self._clickhouse_client.execute(totals_query)
 
             # Get tokens per second (last hour)
             tps_query = """
                 SELECT
-                    sum(metric_value) / 3600.0 as tokens_per_sec
-                FROM ollama_metrics
-                WHERE metric_name = 'ollama_tokens_generated_total'
-                AND timestamp >= now() - INTERVAL 1 HOUR
+                    COALESCE(SUM(tokens_generated), 0) / 3600.0 as tokens_per_sec
+                FROM request_logs
+                WHERE timestamp >= now() - INTERVAL 1 HOUR
             """
             tps = self._clickhouse_client.execute(tps_query)
 
-            # Get uptime
-            uptime_query = """
-                SELECT max(metric_value) as uptime_hours
-                FROM ollama_metrics
-                WHERE metric_name = 'ollama_uptime_seconds'
+            # Get model count
+            models_query = """
+                SELECT COUNT(DISTINCT model) as models_count
+                FROM request_logs
             """
-            uptime = self._clickhouse_client.execute(uptime_query)
+            models = self._clickhouse_client.execute(models_query)
 
             return {
                 "tokens_total": int(totals[0][0] or 0),
                 "tokens_per_sec": float(tps[0][0] or 0),
-                "uptime_hours": float((uptime[0][0] or 0) / 3600),
-                "error_count": int(totals[0][1] or 0),
-                "request_count": int(totals[0][2] or 0),
-                "avg_latency_ms": float(totals[0][3] or 0),
-                "models_available": 0,  # Would need separate query
+                "uptime_hours": self.uptime_seconds / 3600,
+                "error_count": int(totals[0][3] or 0),
+                "request_count": int(totals[0][1] or 0),
+                "avg_latency_ms": float(totals[0][2] or 0),
+                "models_available": int(models[0][0] or 0),
                 "timestamp": datetime.utcnow(),
             }
 
@@ -240,23 +234,19 @@ class DatabaseManager:
             return self._get_empty_stats()
 
     async def _get_current_stats_postgres(self) -> Dict[str, Any]:
-        """Get current stats from PostgreSQL."""
+        """Get current stats from PostgreSQL request_logs table."""
         try:
             from sqlalchemy import text
 
             async with self._postgres_session_factory() as session:
-                # Get totals
+                # Get totals from request_logs
                 totals_query = text("""
                     SELECT
-                        COALESCE(SUM(CASE WHEN metric_name = 'ollama_tokens_generated_total'
-                            THEN metric_value ELSE 0 END), 0) as tokens_total,
-                        COALESCE(SUM(CASE WHEN metric_name = 'ollama_errors_total'
-                            THEN metric_value ELSE 0 END), 0) as error_count,
-                        COUNT(CASE WHEN metric_name = 'ollama_requests_total'
-                            THEN 1 ELSE NULL END) as request_count,
-                        COALESCE(AVG(CASE WHEN metric_name = 'ollama_request_latency_ms'
-                            THEN metric_value ELSE NULL END), 0) as avg_latency_ms
-                    FROM ollama_metrics
+                        COALESCE(SUM(tokens_generated), 0) as tokens_total,
+                        COUNT(*) as request_count,
+                        COALESCE(AVG(latency_ms), 0) as avg_latency_ms,
+                        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count
+                    FROM request_logs
                 """)
                 result = await session.execute(totals_query)
                 totals = result.fetchone()
@@ -264,22 +254,29 @@ class DatabaseManager:
                 # Get tokens per second (last hour)
                 tps_query = text("""
                     SELECT
-                        COALESCE(SUM(metric_value) / 3600.0, 0) as tokens_per_sec
-                    FROM ollama_metrics
-                    WHERE metric_name = 'ollama_tokens_generated_total'
-                    AND timestamp >= NOW() - INTERVAL '1 hour'
+                        COALESCE(SUM(tokens_generated), 0) / 3600.0 as tokens_per_sec
+                    FROM request_logs
+                    WHERE timestamp >= NOW() - INTERVAL '1 hour'
                 """)
                 result = await session.execute(tps_query)
                 tps = result.fetchone()
+
+                # Get model count
+                models_query = text("""
+                    SELECT COUNT(DISTINCT model) as models_count
+                    FROM request_logs
+                """)
+                result = await session.execute(models_query)
+                models = result.fetchone()
 
                 return {
                     "tokens_total": int(totals[0] or 0),
                     "tokens_per_sec": float(tps[0] or 0),
                     "uptime_hours": self.uptime_seconds / 3600,
-                    "error_count": int(totals[1] or 0),
-                    "request_count": int(totals[2] or 0),
-                    "avg_latency_ms": float(totals[3] or 0),
-                    "models_available": 0,
+                    "error_count": int(totals[3] or 0),
+                    "request_count": int(totals[1] or 0),
+                    "avg_latency_ms": float(totals[2] or 0),
+                    "models_available": int(models[0] or 0),
                     "timestamp": datetime.utcnow(),
                 }
 
@@ -330,23 +327,19 @@ class DatabaseManager:
     async def _get_history_clickhouse(
         self, hours: int, granularity_minutes: int
     ) -> List[Dict[str, Any]]:
-        """Get history from ClickHouse."""
+        """Get history from ClickHouse request_logs table."""
         try:
             query = f"""
                 SELECT
                     toStartOfInterval(timestamp, INTERVAL {granularity_minutes} MINUTE) as time_bucket,
-                    sum(CASE WHEN metric_name = 'ollama_tokens_generated_total'
-                        THEN metric_value ELSE 0 END) as tokens_total,
-                    avg(CASE WHEN metric_name = 'ollama_request_latency_ms'
-                        THEN metric_value ELSE NULL END) as latency_ms,
-                    count(CASE WHEN metric_name = 'ollama_requests_total'
-                        THEN 1 ELSE NULL END) / {granularity_minutes} as throughput,
-                    sum(CASE WHEN metric_name = 'ollama_errors_total'
-                        THEN metric_value ELSE 0 END) as error_count
-                FROM ollama_metrics
+                    COALESCE(SUM(tokens_generated), 0) as tokens_total,
+                    COALESCE(AVG(latency_ms), 0) as latency_ms,
+                    COUNT(*) / {granularity_minutes}.0 as throughput,
+                    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count
+                FROM request_logs
                 WHERE timestamp >= now() - INTERVAL {hours} HOUR
                 GROUP BY time_bucket
-                ORDER BY time_bucket DESC
+                ORDER BY time_bucket ASC
             """
             rows = self._clickhouse_client.execute(query)
 
@@ -368,27 +361,22 @@ class DatabaseManager:
     async def _get_history_postgres(
         self, hours: int, granularity_minutes: int
     ) -> List[Dict[str, Any]]:
-        """Get history from PostgreSQL."""
+        """Get history from PostgreSQL request_logs table."""
         try:
             from sqlalchemy import text
 
             async with self._postgres_session_factory() as session:
-                # Use time_bucket if TimescaleDB available, otherwise date_trunc
                 query = text(f"""
                     SELECT
                         date_trunc('minute', timestamp) as time_bucket,
-                        COALESCE(SUM(CASE WHEN metric_name = 'ollama_tokens_generated_total'
-                            THEN metric_value ELSE 0 END), 0) as tokens_total,
-                        COALESCE(AVG(CASE WHEN metric_name = 'ollama_request_latency_ms'
-                            THEN metric_value ELSE NULL END), 0) as latency_ms,
-                        COUNT(CASE WHEN metric_name = 'ollama_requests_total'
-                            THEN 1 ELSE NULL END)::float / {granularity_minutes} as throughput,
-                        COALESCE(SUM(CASE WHEN metric_name = 'ollama_errors_total'
-                            THEN metric_value ELSE 0 END), 0) as error_count
-                    FROM ollama_metrics
+                        COALESCE(SUM(tokens_generated), 0) as tokens_total,
+                        COALESCE(AVG(latency_ms), 0) as latency_ms,
+                        COUNT(*)::float / {granularity_minutes} as throughput,
+                        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count
+                    FROM request_logs
                     WHERE timestamp >= NOW() - INTERVAL '{hours} hours'
                     GROUP BY time_bucket
-                    ORDER BY time_bucket DESC
+                    ORDER BY time_bucket ASC
                 """)
                 result = await session.execute(query)
                 rows = result.fetchall()

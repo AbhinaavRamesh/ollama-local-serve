@@ -210,28 +210,70 @@ CREATE TRIGGER trigger_update_model_usage
     FOR EACH ROW
     EXECUTE FUNCTION update_model_usage();
 
--- Insert default popular models into repository
-INSERT INTO model_repository (model_name, display_name, description, category, size_label) VALUES
-    ('llama3.2', 'Llama 3.2', 'Meta''s Llama 3.2 - latest and most capable', 'general', '1B-90B'),
-    ('llama3.1', 'Llama 3.1', 'Meta''s Llama 3.1 - powerful open model', 'general', '8B-405B'),
-    ('gemma3:1b', 'Gemma 3 1B', 'Google''s Gemma 3 - compact 1B model', 'general', '1B'),
-    ('gemma3:4b', 'Gemma 3 4B', 'Google''s Gemma 3 - balanced 4B model', 'general', '4B'),
-    ('gemma2', 'Gemma 2', 'Google''s Gemma 2 model', 'general', '2B-27B'),
-    ('nemotron-mini', 'Nemotron Mini', 'NVIDIA Nemotron Mini - efficient small model', 'general', '4B'),
-    ('mistral', 'Mistral 7B', 'Mistral AI''s 7B model - fast and efficient', 'general', '7B'),
-    ('mixtral', 'Mixtral 8x7B', 'Mistral''s mixture of experts model', 'general', '8x7B'),
-    ('phi3', 'Phi-3', 'Microsoft''s small but capable model', 'general', '3.8B'),
-    ('phi3:mini', 'Phi-3 Mini', 'Microsoft Phi-3 Mini', 'general', '3.8B'),
-    ('qwen2.5', 'Qwen 2.5', 'Alibaba''s Qwen 2.5 model', 'general', '0.5B-72B'),
-    ('qwen2.5:1.5b', 'Qwen 2.5 1.5B', 'Alibaba''s Qwen 2.5 - tiny variant', 'general', '1.5B'),
-    ('codellama', 'Code Llama', 'Meta''s code-specialized Llama', 'coding', '7B-34B'),
-    ('deepseek-coder', 'DeepSeek Coder', 'DeepSeek''s coding model', 'coding', '1.3B-33B'),
-    ('deepseek-coder-v2', 'DeepSeek Coder V2', 'DeepSeek Coder V2 - improved coding', 'coding', '16B-236B'),
-    ('starcoder2', 'StarCoder 2', 'BigCode''s StarCoder 2', 'coding', '3B-15B'),
-    ('tinyllama', 'TinyLlama', 'Tiny but fast for testing', 'general', '1.1B'),
-    ('neural-chat', 'Neural Chat', 'Intel''s neural chat model', 'chat', '7B'),
-    ('starling-lm', 'Starling LM', 'Berkeley''s Starling model', 'chat', '7B'),
-    ('dolphin-mixtral', 'Dolphin Mixtral', 'Uncensored Mixtral variant', 'general', '8x7B')
+-- Insert default popular models into repository (general and reasoning only)
+INSERT INTO model_repository (model_name, display_name, description, category, size_label, is_default) VALUES
+    -- Gemma 3 (General)
+    ('gemma3', 'Gemma 3', 'Google''s most capable single GPU model', 'general', '270M-27B', FALSE),
+    ('gemma3:1b', 'Gemma 3 1B', 'Google Gemma 3 - compact 1B variant', 'general', '1B', FALSE),
+    ('gemma3:4b', 'Gemma 3 4B', 'Google Gemma 3 - balanced 4B variant', 'general', '4B', FALSE),
+    ('gemma3:12b', 'Gemma 3 12B', 'Google Gemma 3 - 12B variant', 'general', '12B', FALSE),
+    ('gemma3:27b', 'Gemma 3 27B', 'Google Gemma 3 - largest 27B variant', 'general', '27B', FALSE),
+    -- Gemma 2 (General)
+    ('gemma2', 'Gemma 2', 'Google Gemma 2 - high-performing and efficient', 'general', '2B-27B', FALSE),
+    ('gemma2:2b', 'Gemma 2 2B', 'Google Gemma 2 - compact 2B variant', 'general', '2B', FALSE),
+    ('gemma2:9b', 'Gemma 2 9B', 'Google Gemma 2 - balanced 9B variant', 'general', '9B', FALSE),
+    -- Llama 3.1 (General)
+    ('llama3.1', 'Llama 3.1', 'Meta''s state-of-the-art with tool support', 'general', '8B-405B', FALSE),
+    ('llama3.1:8b', 'Llama 3.1 8B', 'Meta Llama 3.1 - efficient 8B variant', 'general', '8B', FALSE),
+    ('llama3.1:70b', 'Llama 3.1 70B', 'Meta Llama 3.1 - powerful 70B variant', 'general', '70B', FALSE),
+    -- Llama 3.2 (General)
+    ('llama3.2', 'Llama 3.2', 'Meta''s compact models with tool support', 'general', '1B-3B', FALSE),
+    ('llama3.2:1b', 'Llama 3.2 1B', 'Meta Llama 3.2 - tiny efficient 1B model', 'general', '1B', TRUE),
+    ('llama3.2:3b', 'Llama 3.2 3B', 'Meta Llama 3.2 - compact 3B model', 'general', '3B', FALSE),
+    -- Llama 3.3 (General)
+    ('llama3.3', 'Llama 3.3', 'Similar performance to Llama 3.1 405B', 'general', '70B', FALSE),
+    ('llama3.3:70b', 'Llama 3.3 70B', 'Meta Llama 3.3 - 70B with 405B performance', 'general', '70B', FALSE),
+    -- Qwen 3 (General)
+    ('qwen3', 'Qwen 3', 'Alibaba''s latest with MoE and thinking mode', 'general', '0.6B-235B', FALSE),
+    ('qwen3:0.6b', 'Qwen 3 0.6B', 'Qwen 3 - tiny 0.6B variant', 'general', '0.6B', FALSE),
+    ('qwen3:4b', 'Qwen 3 4B', 'Qwen 3 - compact 4B variant', 'general', '4B', FALSE),
+    ('qwen3:8b', 'Qwen 3 8B', 'Qwen 3 - balanced 8B variant', 'general', '8B', FALSE),
+    ('qwen3:14b', 'Qwen 3 14B', 'Qwen 3 - capable 14B variant', 'general', '14B', FALSE),
+    ('qwen3:32b', 'Qwen 3 32B', 'Qwen 3 - powerful 32B variant', 'general', '32B', FALSE),
+    -- Qwen 2.5 (General)
+    ('qwen2.5', 'Qwen 2.5', '128K context, multilingual, tool support', 'general', '0.5B-72B', FALSE),
+    ('qwen2.5:0.5b', 'Qwen 2.5 0.5B', 'Qwen 2.5 - tiny 0.5B variant', 'general', '0.5B', FALSE),
+    ('qwen2.5:1.5b', 'Qwen 2.5 1.5B', 'Qwen 2.5 - small 1.5B variant', 'general', '1.5B', FALSE),
+    ('qwen2.5:3b', 'Qwen 2.5 3B', 'Qwen 2.5 - compact 3B variant', 'general', '3B', FALSE),
+    ('qwen2.5:7b', 'Qwen 2.5 7B', 'Qwen 2.5 - balanced 7B variant', 'general', '7B', FALSE),
+    ('qwen2.5:14b', 'Qwen 2.5 14B', 'Qwen 2.5 - capable 14B variant', 'general', '14B', FALSE),
+    ('qwen2.5:32b', 'Qwen 2.5 32B', 'Qwen 2.5 - powerful 32B variant', 'general', '32B', FALSE),
+    -- DeepSeek R1 (Reasoning)
+    ('deepseek-r1', 'DeepSeek R1', 'Open reasoning models with thinking mode', 'reasoning', '1.5B-671B', FALSE),
+    ('deepseek-r1:1.5b', 'DeepSeek R1 1.5B', 'DeepSeek R1 - tiny reasoning model', 'reasoning', '1.5B', FALSE),
+    ('deepseek-r1:7b', 'DeepSeek R1 7B', 'DeepSeek R1 - compact reasoning model', 'reasoning', '7B', FALSE),
+    ('deepseek-r1:8b', 'DeepSeek R1 8B', 'DeepSeek R1 - balanced reasoning model', 'reasoning', '8B', FALSE),
+    ('deepseek-r1:14b', 'DeepSeek R1 14B', 'DeepSeek R1 - capable reasoning model', 'reasoning', '14B', FALSE),
+    ('deepseek-r1:32b', 'DeepSeek R1 32B', 'DeepSeek R1 - powerful reasoning model', 'reasoning', '32B', FALSE),
+    ('deepseek-r1:70b', 'DeepSeek R1 70B', 'DeepSeek R1 - large reasoning model', 'reasoning', '70B', FALSE),
+    -- DeepSeek V3 (General)
+    ('deepseek-v3', 'DeepSeek V3', 'MoE with 671B total, 37B active params', 'general', '671B', FALSE),
+    -- GPT-OSS (Reasoning)
+    ('gpt-oss', 'GPT-OSS', 'OpenAI''s open-weight models with thinking mode', 'reasoning', '20B-120B', FALSE),
+    ('gpt-oss:20b', 'GPT-OSS 20B', 'OpenAI GPT-OSS - compact 20B variant', 'reasoning', '20B', FALSE),
+    ('gpt-oss:120b', 'GPT-OSS 120B', 'OpenAI GPT-OSS - large 120B variant', 'reasoning', '120B', FALSE),
+    -- Phi 3 & 4 (General)
+    ('phi3', 'Phi-3', 'Microsoft''s lightweight state-of-the-art', 'general', '3.8B-14B', FALSE),
+    ('phi3:mini', 'Phi-3 Mini', 'Microsoft Phi-3 Mini - 3.8B', 'general', '3.8B', FALSE),
+    ('phi4', 'Phi-4', 'Microsoft''s state-of-the-art 14B model', 'general', '14B', FALSE),
+    -- Mistral (General)
+    ('mistral', 'Mistral 7B', 'Mistral AI 7B v0.3 with tool support', 'general', '7B', FALSE),
+    ('mistral-nemo', 'Mistral Nemo', 'Mistral 12B with 128K context', 'general', '12B', FALSE),
+    ('mistral-small', 'Mistral Small', 'Mistral 22-24B with tool support', 'general', '22B-24B', FALSE),
+    -- Mixtral (General - MoE)
+    ('mixtral', 'Mixtral', 'Mistral Mixture of Experts with tool support', 'general', '8x7B-8x22B', FALSE),
+    ('mixtral:8x7b', 'Mixtral 8x7B', 'Mixtral - 8x7B MoE variant', 'general', '8x7B', FALSE),
+    ('mixtral:8x22b', 'Mixtral 8x22B', 'Mixtral - 8x22B MoE variant', 'general', '8x22B', FALSE)
 ON CONFLICT (model_name) DO UPDATE
 SET
     display_name = EXCLUDED.display_name,

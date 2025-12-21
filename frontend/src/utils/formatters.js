@@ -35,6 +35,15 @@ export function formatNumber(num, decimals = 1, abbreviate = true) {
     return (num / 1_000).toFixed(decimals) + 'K'
   }
 
+  // For small decimal values (< 1), show more precision
+  if (absNum > 0 && absNum < 1) {
+    // Show at least 2 significant digits for small numbers
+    if (absNum < 0.01) {
+      return num.toFixed(3)
+    }
+    return num.toFixed(2)
+  }
+
   return num.toFixed(decimals)
 }
 

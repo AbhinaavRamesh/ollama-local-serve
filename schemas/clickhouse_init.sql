@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS request_logs (
     latency_ms UInt32,
     status String,
     error_message Nullable(String),
+    client_ip String DEFAULT '',
+    user_agent String DEFAULT '',
+    origin String DEFAULT '',
+    referer String DEFAULT '',
     INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
     INDEX idx_model model TYPE set(100) GRANULARITY 1,
     INDEX idx_status status TYPE set(10) GRANULARITY 1
