@@ -669,7 +669,7 @@ def _register_routes(app: FastAPI) -> None:
             # Transform database models to the expected format
             models = [
                 {
-                    "name": model["model_name"],
+                    "name": model.get("model_name", ""),
                     "description": model.get("description", ""),
                     "size": model.get("size_label", ""),
                 }
