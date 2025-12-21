@@ -269,7 +269,6 @@ function ModelManagementSection() {
   )
 
   const favoriteModels = filteredRepoModels.filter(m => m.is_favorite)
-  const availableModels = filteredRepoModels.filter(m => !m.is_installed)
 
   return (
     <div className="space-y-4">
