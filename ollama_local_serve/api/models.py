@@ -2,6 +2,7 @@
 Pydantic models for API request/response schemas.
 """
 
+import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
@@ -103,7 +104,10 @@ class ChatRequest(BaseModel):
     """Chat request model."""
 
     prompt: str = Field(..., description="User prompt")
-    model: str = Field("tinyllama", description="Model to use")
+    model: str = Field(
+        default_factory=lambda: os.getenv("OLLAMA_MODEL", "llama3.2"),
+        description="Model to use"
+    )
     system: Optional[str] = Field(None, description="System prompt")
     temperature: Optional[float] = Field(0.7, description="Temperature for generation")
     max_tokens: Optional[int] = Field(None, description="Maximum tokens to generate")
