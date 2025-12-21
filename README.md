@@ -1,5 +1,9 @@
 # Ollama Local Serve
 
+[![PyPI version](https://badge.fury.io/py/ollama-local-serve.svg)](https://pypi.org/project/ollama-local-serve/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Local LLM infrastructure with a professional monitoring dashboard for distributed AI applications. Serve Ollama-powered models across your network with seamless LangChain integration, OpenTelemetry instrumentation, and real-time metrics visualization.
 
 ## Features
