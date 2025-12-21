@@ -269,7 +269,6 @@ function ModelManagementSection() {
   )
 
   const favoriteModels = filteredRepoModels.filter(m => m.is_favorite)
-  const installedRepoModels = filteredRepoModels.filter(m => m.is_installed)
   const availableModels = filteredRepoModels.filter(m => !m.is_installed)
 
   return (
