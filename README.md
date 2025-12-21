@@ -319,7 +319,8 @@ def cube(x: float) -> float:
     return x ** 3
 
 # Start Ollama service and create agent
-async with OllamaService(NetworkConfig()) as service:
+config = NetworkConfig()
+async with OllamaService(config) as service:
     llm = create_langchain_chat_client(config=config, model="llama3.2")
     agent = create_react_agent(llm, [cube])
     
