@@ -6,10 +6,8 @@ prebuilt ReAct agent. The ReAct (Reasoning + Acting) agent combines reasoning
 and tool use to solve complex problems.
 
 Prerequisites:
-    pip install ollama-local-serve[langchain]
-    pip install langgraph
+    pip install ollama-local-serve[langgraph]
     pip install langchain-community
-    pip install tavily-python  # Optional: for web search tool
 """
 
 import asyncio
@@ -238,9 +236,10 @@ async def advanced_react_agent_example():
                     logger.info("\nAgent's Reasoning Process:")
                     for i, msg in enumerate(messages, 1):
                         logger.info(f"\nStep {i}: {msg.type}")
-                        logger.info(
-                            f"Content: {msg.content[:MAX_LOG_MESSAGE_LENGTH]}..."
-                        )  # Truncate long messages
+                        content = msg.content
+                        if len(content) > MAX_LOG_MESSAGE_LENGTH:
+                            content = content[:MAX_LOG_MESSAGE_LENGTH] + "..."
+                        logger.info(f"Content: {content}")
 
                     # Show final answer
                     final_message = messages[-1]
