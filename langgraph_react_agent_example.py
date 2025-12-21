@@ -17,6 +17,18 @@ import logging
 
 from ollama_local_serve import NetworkConfig, OllamaService, create_langchain_chat_client
 
+# Constants
+MAX_LOG_MESSAGE_LENGTH = 200
+
+# Try to import langgraph at module level
+try:
+    from langgraph.prebuilt import create_react_agent
+
+    LANGGRAPH_AVAILABLE = True
+except ImportError:
+    LANGGRAPH_AVAILABLE = False
+    create_react_agent = None  # type: ignore
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -103,10 +115,8 @@ async def create_react_agent_example():
             tools = setup_tools()
             logger.info(f"Created {len(tools)} tools for the agent")
 
-            # Import LangGraph's prebuilt ReAct agent creator
-            try:
-                from langgraph.prebuilt import create_react_agent
-            except ImportError:
+            # Check if LangGraph is available
+            if not LANGGRAPH_AVAILABLE:
                 logger.error(
                     "langgraph is not installed. " "Install it with: pip install langgraph"
                 )
@@ -196,9 +206,14 @@ async def advanced_react_agent_example():
             # Set up tools
             tools = setup_tools()
 
-            # Import and create agent
-            from langgraph.prebuilt import create_react_agent
+            # Check if LangGraph is available
+            if not LANGGRAPH_AVAILABLE:
+                logger.error(
+                    "langgraph is not installed. " "Install it with: pip install langgraph"
+                )
+                return
 
+            # Create agent
             agent_executor = create_react_agent(llm, tools)
 
             # Complex multi-step query
@@ -223,7 +238,9 @@ async def advanced_react_agent_example():
                     logger.info("\nAgent's Reasoning Process:")
                     for i, msg in enumerate(messages, 1):
                         logger.info(f"\nStep {i}: {msg.type}")
-                        logger.info(f"Content: {msg.content[:200]}...")  # Truncate long messages
+                        logger.info(
+                            f"Content: {msg.content[:MAX_LOG_MESSAGE_LENGTH]}..."
+                        )  # Truncate long messages
 
                     # Show final answer
                     final_message = messages[-1]
