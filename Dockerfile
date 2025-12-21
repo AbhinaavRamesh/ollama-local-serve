@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
+# Copy requirements and install dependencies to user directory
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
@@ -25,18 +25,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages from builder
-COPY --from=builder /root/.local /root/.local
-
-# Ensure scripts are in PATH
-ENV PATH=/root/.local/bin:$PATH
-
-# Copy application code
-COPY ollama_local_serve/ ./ollama_local_serve/
-
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser
+
+# Copy installed packages from builder (user directory) to appuser's home
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Set ownership for appuser
+RUN chown -R appuser:appuser /home/appuser/.local
+
+# Switch to non-root user
 USER appuser
+
+# Ensure scripts are in PATH for appuser
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+# Copy application code (as appuser)
+COPY --chown=appuser:appuser ollama_local_serve/ ./ollama_local_serve/
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \

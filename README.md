@@ -1,5 +1,9 @@
 # Ollama Local Serve
 
+[![PyPI version](https://badge.fury.io/py/ollama-local-serve.svg)](htfor Repotps://pypi.org/project/ollama-local-serve/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Local LLM infrastructure with a professional monitoring dashboard for distributed AI applications. Serve Ollama-powered models across your network with seamless LangChain integration, OpenTelemetry instrumentation, and real-time metrics visualization.
 
 ## Features
@@ -9,7 +13,12 @@ Local LLM infrastructure with a professional monitoring dashboard for distribute
 - **LangChain Integration**: Seamless integration with LangChain for remote LLM clients
 - **OpenTelemetry Instrumentation**: Built-in metrics collection with OTEL support
 - **Real-time Monitoring Dashboard**: Professional React dashboard with live metrics
+- **In-App Chat Interface**: Floating chat bubble with streaming responses and markdown support
+- **Model Management**: Pull, delete, and manage models directly from the dashboard
+- **Model Repository**: Track favorites, usage stats, and preferences per model
 - **Multiple Database Backends**: Export metrics to ClickHouse or PostgreSQL/TimescaleDB
+- **Enhanced Request Logging**: Capture prompt/response text, client info, and token counts
+- **Data Management**: Clear metrics/logs and view data summaries via API
 - **Health Checks**: Built-in health check endpoints to monitor service status
 - **Docker Ready**: Complete Docker Compose stack for production deployment
 - **Async/Await**: Production-ready async patterns throughout
@@ -245,11 +254,34 @@ async with OllamaService(config) as service:
 The monitoring API provides:
 
 ```
-GET /api/health          - Health check
-GET /api/stats/current   - Current statistics
-GET /api/stats/history   - Historical metrics
-GET /api/stats/logs      - Request logs
-GET /api/models          - Available models
+# Health & Stats
+GET  /api/health           - Health check
+GET  /api/stats/current    - Current statistics
+GET  /api/stats/history    - Historical metrics
+GET  /api/stats/logs       - Request logs (with prompt/response text)
+GET  /api/models           - Model statistics
+
+# Chat
+POST /api/chat             - Stream chat with Ollama (SSE)
+
+# Ollama Proxy
+GET  /api/ollama/models    - List installed Ollama models
+POST /api/ollama/pull      - Pull a model (streaming progress)
+DELETE /api/ollama/models/{name} - Delete a model
+GET  /api/ollama/library   - Search model library
+
+# Model Repository (PostgreSQL)
+GET  /api/models/repository         - Get all models with preferences
+GET  /api/models/repository/{name}  - Get model details
+POST /api/models/repository         - Add model to repository
+PUT  /api/models/repository/{name}  - Update model (favorite, default)
+POST /api/models/repository/sync    - Sync with installed models
+
+# Data Management
+GET    /api/data/summary   - Get data summary
+DELETE /api/data/metrics   - Clear all metrics
+DELETE /api/data/logs      - Clear all request logs
+DELETE /api/data/all       - Clear all data
 ```
 
 ## LangChain Integration
@@ -292,8 +324,12 @@ ollama-local-serve/
 ├── frontend/                    # React dashboard
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── chat/            # Chat bubble with streaming
+│   │   │   ├── charts/          # Visualization components
+│   │   │   └── ...              # Other UI components
 │   │   ├── pages/
 │   │   ├── hooks/
+│   │   ├── context/             # App and Theme context
 │   │   └── utils/
 │   ├── package.json
 │   └── Dockerfile

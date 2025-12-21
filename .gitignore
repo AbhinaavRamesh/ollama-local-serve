@@ -214,3 +214,6 @@ instance/
 
 # SageMath
 *.sage.py
+
+## Local References
+local_ref*

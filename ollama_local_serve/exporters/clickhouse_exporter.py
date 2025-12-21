@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS ollama_metrics (
     metric_type String,
     metric_name String,
     metric_value Float64,
-    metadata String,
+    metric_metadata String,
     INDEX idx_timestamp timestamp TYPE minmax GRANULARITY 1,
     INDEX idx_metric metric_type TYPE set(1) GRANULARITY 1
 ) ENGINE = ReplacingMergeTree()
@@ -205,7 +205,7 @@ class ClickHouseExporter(BaseExporter):
             self._client.execute(
                 """
                 INSERT INTO ollama_metrics
-                (timestamp, service_name, metric_type, metric_name, metric_value, metadata)
+                (timestamp, service_name, metric_type, metric_name, metric_value, metric_metadata)
                 VALUES
                 """,
                 data,
@@ -303,7 +303,7 @@ class ClickHouseExporter(BaseExporter):
         query = f"""
             SELECT
                 timestamp, service_name, metric_type, metric_name,
-                metric_value, metadata
+                metric_value, metric_metadata
             FROM ollama_metrics
             WHERE {where_clause}
             ORDER BY timestamp DESC

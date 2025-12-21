@@ -81,51 +81,51 @@ init:
 # Build all images
 build:
 	@echo "Building Docker images..."
-	docker-compose build
+	docker compose build
 
 # Build without cache
 build-no-cache:
 	@echo "Building Docker images (no cache)..."
-	docker-compose build --no-cache
+	docker compose build --no-cache
 
 # Start all services
 up:
 	@echo "Starting all services..."
-	docker-compose up -d
+	docker compose up -d
 
 # Stop all services
 down:
 	@echo "Stopping all services..."
-	docker-compose down
+	docker compose down
 
 # Restart all services
 restart:
 	@echo "Restarting all services..."
-	docker-compose restart
+	docker compose restart
 
 # View logs
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 logs-api:
-	docker-compose logs -f ollama-monitor
+	docker compose logs -f ollama-monitor
 
 logs-frontend:
-	docker-compose logs -f frontend
+	docker compose logs -f frontend
 
 logs-clickhouse:
-	docker-compose logs -f clickhouse
+	docker compose logs -f clickhouse
 
 logs-postgres:
-	docker-compose logs -f postgres
+	docker compose logs -f postgres
 
 logs-ollama:
-	docker-compose logs -f ollama
+	docker compose logs -f ollama
 
 # Show status
 status:
 	@echo "Service Status:"
-	@docker-compose ps
+	@docker compose ps
 
 # Health check
 health:
@@ -138,7 +138,7 @@ health:
 	@curl -s http://localhost:8123/ping > /dev/null && echo "  ✓ Healthy" || echo "  ✗ Unhealthy"
 	@echo ""
 	@echo "PostgreSQL:"
-	@docker-compose exec -T postgres pg_isready -U ollama > /dev/null 2>&1 && echo "  ✓ Healthy" || echo "  ✗ Unhealthy"
+	@docker compose exec -T postgres pg_isready -U ollama > /dev/null 2>&1 && echo "  ✓ Healthy" || echo "  ✗ Unhealthy"
 	@echo ""
 	@echo "API Server:"
 	@curl -s http://localhost:8000/api/health > /dev/null && echo "  ✓ Healthy" || echo "  ✗ Unhealthy"
@@ -148,64 +148,64 @@ health:
 
 # Open shell in API container
 shell:
-	docker-compose exec ollama-monitor /bin/bash
+	docker compose exec ollama-monitor /bin/bash
 
 shell-clickhouse:
-	docker-compose exec clickhouse clickhouse-client
+	docker compose exec clickhouse clickhouse-client
 
 shell-postgres:
-	docker-compose exec postgres psql -U ollama -d ollama_metrics
+	docker compose exec postgres psql -U ollama -d ollama_metrics
 
 # Clean everything
 clean:
 	@echo "Cleaning up..."
-	docker-compose down -v --rmi all --remove-orphans
+	docker compose down -v --rmi all --remove-orphans
 	@echo "Cleanup complete!"
 
 # Clean volumes only
 clean-volumes:
 	@echo "Removing volumes..."
-	docker-compose down -v
+	docker compose down -v
 	@echo "Volumes removed!"
 
 # Development environment
 dev:
 	@echo "Starting development environment..."
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+	docker compose -f docker compose.yml -f docker compose.dev.yml up --build
 
 dev-down:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
+	docker compose -f docker compose.yml -f docker compose.dev.yml down
 
 # Production environment
 prod:
 	@echo "Starting production environment..."
-	docker-compose up -d --build
+	docker compose up -d --build
 
 # Pull latest images
 pull:
 	@echo "Pulling latest images..."
-	docker-compose pull
+	docker compose pull
 
 # Database operations
 db-migrate:
 	@echo "Running database migrations..."
-	docker-compose exec clickhouse clickhouse-client --query="SOURCE '/docker-entrypoint-initdb.d/init.sql'"
-	docker-compose exec postgres psql -U ollama -d ollama_metrics -f /docker-entrypoint-initdb.d/init.sql
+	docker compose exec clickhouse clickhouse-client --query="SOURCE '/docker-entrypoint-initdb.d/init.sql'"
+	docker compose exec postgres psql -U ollama -d ollama_metrics -f /docker-entrypoint-initdb.d/init.sql
 
 db-backup:
 	@echo "Backing up databases..."
 	@mkdir -p backups
-	@docker-compose exec clickhouse clickhouse-client --query="SELECT * FROM ollama_metrics.ollama_metrics FORMAT JSONEachRow" > backups/clickhouse_metrics_$$(date +%Y%m%d).json
-	@docker-compose exec postgres pg_dump -U ollama ollama_metrics > backups/postgres_$$(date +%Y%m%d).sql
+	@docker compose exec clickhouse clickhouse-client --query="SELECT * FROM ollama_metrics.ollama_metrics FORMAT JSONEachRow" > backups/clickhouse_metrics_$$(date +%Y%m%d).json
+	@docker compose exec postgres pg_dump -U ollama ollama_metrics > backups/postgres_$$(date +%Y%m%d).sql
 	@echo "Backups created in ./backups/"
 
 # Model management
 ollama-pull:
 	@read -p "Enter model name: " model; \
-	docker-compose exec ollama ollama pull $$model
+	docker compose exec ollama ollama pull $$model
 
 ollama-list:
-	docker-compose exec ollama ollama list
+	docker compose exec ollama ollama list
 
 # Testing
 test-api:
@@ -219,7 +219,7 @@ test-api:
 # Scale services
 scale-api:
 	@read -p "Number of API instances: " n; \
-	docker-compose up -d --scale ollama-monitor=$$n
+	docker compose up -d --scale ollama-monitor=$$n
 
 # Resource usage
 resources:
@@ -340,7 +340,7 @@ check-deps:
 	@docker --version 2>/dev/null || echo "  Not found"
 	@echo ""
 	@echo "Docker Compose:"
-	@docker-compose --version 2>/dev/null || docker compose version 2>/dev/null || echo "  Not found"
+	@docker compose --version 2>/dev/null || docker compose version 2>/dev/null || echo "  Not found"
 	@echo ""
 	@echo "ClickHouse client:"
 	@clickhouse-client --version 2>/dev/null || echo "  Not found (optional - install with: make install-clickhouse-client)"
@@ -363,14 +363,14 @@ endef
 # Start with selective services
 up-selective:
 	@echo "Starting services (ClickHouse=$(ENABLE_CLICKHOUSE), PostgreSQL=$(ENABLE_POSTGRES), Frontend=$(ENABLE_FRONTEND))..."
-	docker-compose up -d $(strip $(get_services))
+	docker compose up -d $(strip $(get_services))
 
 # Start minimal - only Ollama and API (no databases, no frontend)
-# Note: The API service is named 'ollama-monitor' in docker-compose
+# Note: The API service is named 'ollama-monitor' in docker compose
 up-minimal:
 	@echo "Starting minimal setup (Ollama + API only)..."
 	@echo "Note: API (ollama-monitor service) will run without database exporters"
-	docker-compose up -d ollama
+	docker compose up -d ollama
 	@echo "Waiting for Ollama to be healthy..."
 	@timeout=60; \
 	while [ "$$(docker inspect -f '{{.State.Health.Status}}' ollama 2>/dev/null)" != "healthy" ]; do \
@@ -381,19 +381,19 @@ up-minimal:
 	  sleep 1; \
 	  timeout=$$((timeout - 1)); \
 	done
-	EXPORTER_TYPE=none docker-compose up -d ollama-monitor
+	EXPORTER_TYPE=none docker compose up -d ollama-monitor
 
 # Start with ClickHouse (includes Ollama, API, ClickHouse, and frontend)
-# Note: The API service is named 'ollama-monitor' in docker-compose
+# Note: The API service is named 'ollama-monitor' in docker compose
 up-clickhouse:
 	@echo "Starting with ClickHouse (Ollama + API + ClickHouse + frontend)..."
-	EXPORTER_TYPE=clickhouse docker-compose up -d ollama clickhouse ollama-monitor frontend
+	EXPORTER_TYPE=clickhouse docker compose up -d ollama clickhouse ollama-monitor frontend
 
 # Start with PostgreSQL (includes Ollama, API, PostgreSQL, and frontend)
-# Note: The API service is named 'ollama-monitor' in docker-compose
+# Note: The API service is named 'ollama-monitor' in docker compose
 up-postgres:
 	@echo "Starting with PostgreSQL (Ollama + API + PostgreSQL + frontend)..."
-	EXPORTER_TYPE=postgres docker-compose up -d ollama postgres ollama-monitor frontend
+	EXPORTER_TYPE=postgres docker compose up -d ollama postgres ollama-monitor frontend
 
 # =============================================================================
 # Local Development (without Docker)
