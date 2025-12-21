@@ -79,7 +79,6 @@ function ModelManagementSection() {
   const [pullProgress, setPullProgress] = useState({})
   const [deleting, setDeleting] = useState(null)
   const [error, setError] = useState(null)
-  const [showLibrary, setShowLibrary] = useState(false)
   const [activeTab, setActiveTab] = useState('installed')
 
   // Fetch installed models from Ollama
