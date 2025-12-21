@@ -586,7 +586,7 @@ export function ChatBubble() {
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [models, setModels] = useState([])
-  const [selectedModel, setSelectedModel] = useState('tinyllama')
+  const [selectedModel, setSelectedModel] = useState('llama3.2')
   const [modelsLoading, setModelsLoading] = useState(false)
 
   const messagesEndRef = useRef(null)
