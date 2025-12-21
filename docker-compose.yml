@@ -126,7 +126,7 @@ services:
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-120}
       # Instrumentation
       - ENABLE_INSTRUMENTATION=${ENABLE_INSTRUMENTATION:-true}
-      - EXPORTER_TYPE=${EXPORTER_TYPE:-both}
+      - EXPORTER_TYPE=${EXPORTER_TYPE:-clickhouse}
       - METRICS_EXPORT_INTERVAL=${METRICS_EXPORT_INTERVAL:-5}
       - SERVICE_NAME=${SERVICE_NAME:-ollama-local-serve}
       # ClickHouse
