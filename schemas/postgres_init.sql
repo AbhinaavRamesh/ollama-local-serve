@@ -232,7 +232,12 @@ INSERT INTO model_repository (model_name, display_name, description, category, s
     ('neural-chat', 'Neural Chat', 'Intel''s neural chat model', 'chat', '7B'),
     ('starling-lm', 'Starling LM', 'Berkeley''s Starling model', 'chat', '7B'),
     ('dolphin-mixtral', 'Dolphin Mixtral', 'Uncensored Mixtral variant', 'general', '8x7B')
-ON CONFLICT (model_name) DO NOTHING;
+ON CONFLICT (model_name) DO UPDATE
+SET
+    display_name = EXCLUDED.display_name,
+    description  = EXCLUDED.description,
+    category     = EXCLUDED.category,
+    size_label   = EXCLUDED.size_label;
 
 -- View for model repository with usage stats
 CREATE OR REPLACE VIEW model_repository_stats AS
