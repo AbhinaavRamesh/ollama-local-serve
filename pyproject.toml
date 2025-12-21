@@ -48,6 +48,12 @@ langchain = [
     "langchain-community>=0.0.10",
 ]
 
+# LangGraph integration (includes langchain)
+langgraph = [
+    "ollama-local-serve[langchain]",
+    "langgraph>=0.2.0",
+]
+
 # FastAPI server and API
 api = [
     "fastapi>=0.104.0",
@@ -94,7 +100,7 @@ monitoring = [
 
 # All features
 all = [
-    "ollama-local-serve[langchain,monitoring]",
+    "ollama-local-serve[langgraph,monitoring]",
 ]
 
 # Development dependencies
