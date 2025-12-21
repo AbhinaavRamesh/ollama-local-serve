@@ -460,7 +460,9 @@ class DatabaseManager:
             query = f"""
                 SELECT
                     request_id, timestamp, model, tokens_generated,
-                    latency_ms, status, error_message
+                    latency_ms, status, error_message,
+                    prompt_text, response_text, prompt_tokens, total_tokens,
+                    client_ip, user_agent, origin, referer
                 FROM request_logs
                 WHERE {where_clause}
                 ORDER BY timestamp DESC
@@ -479,6 +481,14 @@ class DatabaseManager:
                     "latency": row[4],
                     "status": row[5],
                     "error_message": row[6],
+                    "prompt_text": row[7] if len(row) > 7 else None,
+                    "response_text": row[8] if len(row) > 8 else None,
+                    "prompt_tokens": row[9] if len(row) > 9 else None,
+                    "total_tokens": row[10] if len(row) > 10 else None,
+                    "client_ip": row[11] if len(row) > 11 else None,
+                    "user_agent": row[12] if len(row) > 12 else None,
+                    "origin": row[13] if len(row) > 13 else None,
+                    "referer": row[14] if len(row) > 14 else None,
                 }
                 for row in rows
             ]
@@ -551,6 +561,471 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error getting logs from PostgreSQL: {e}")
             return {"total": 0, "logs": []}
+
+    # ========================================================================
+    # Model Repository Methods (PostgreSQL only)
+    # ========================================================================
+
+    async def get_model_repository(
+        self,
+        category: Optional[str] = None,
+        favorites_only: bool = False,
+        installed_only: bool = False,
+    ) -> Dict[str, Any]:
+        """Get models from the repository."""
+        if not self._postgres_session_factory:
+            return {"models": [], "total": 0, "favorites_count": 0, "installed_count": 0}
+
+        try:
+            from sqlalchemy import text
+
+            conditions = []
+            params = {}
+
+            if category:
+                conditions.append("category = :category")
+                params["category"] = category
+            if favorites_only:
+                conditions.append("is_favorite = TRUE")
+            if installed_only:
+                conditions.append("is_installed = TRUE")
+
+            where_clause = " AND ".join(conditions) if conditions else "TRUE"
+
+            async with self._postgres_session_factory() as session:
+                # Get models
+                query = text(f"""
+                    SELECT
+                        id, model_name, display_name, description, category,
+                        size_label, size_bytes, is_favorite, is_installed, is_default,
+                        download_count, usage_count, total_tokens_generated,
+                        last_used_at, installed_at, created_at, updated_at
+                    FROM model_repository
+                    WHERE {where_clause}
+                    ORDER BY is_favorite DESC, usage_count DESC, model_name ASC
+                """)
+                result = await session.execute(query, params)
+                rows = result.fetchall()
+
+                models = [
+                    {
+                        "id": row[0],
+                        "model_name": row[1],
+                        "display_name": row[2],
+                        "description": row[3],
+                        "category": row[4],
+                        "size_label": row[5],
+                        "size_bytes": row[6] or 0,
+                        "is_favorite": row[7],
+                        "is_installed": row[8],
+                        "is_default": row[9],
+                        "download_count": row[10] or 0,
+                        "usage_count": row[11] or 0,
+                        "total_tokens_generated": row[12] or 0,
+                        "last_used_at": row[13],
+                        "installed_at": row[14],
+                        "created_at": row[15],
+                        "updated_at": row[16],
+                    }
+                    for row in rows
+                ]
+
+                # Get counts
+                count_query = text("""
+                    SELECT
+                        COUNT(*) as total,
+                        SUM(CASE WHEN is_favorite THEN 1 ELSE 0 END) as favorites,
+                        SUM(CASE WHEN is_installed THEN 1 ELSE 0 END) as installed
+                    FROM model_repository
+                """)
+                count_result = await session.execute(count_query)
+                counts = count_result.fetchone()
+
+                return {
+                    "models": models,
+                    "total": counts[0] or 0,
+                    "favorites_count": counts[1] or 0,
+                    "installed_count": counts[2] or 0,
+                }
+
+        except Exception as e:
+            logger.error(f"Error getting model repository: {e}")
+            return {"models": [], "total": 0, "favorites_count": 0, "installed_count": 0}
+
+    async def get_model_by_name(self, model_name: str) -> Optional[Dict[str, Any]]:
+        """Get a single model from repository by name."""
+        if not self._postgres_session_factory:
+            return None
+
+        try:
+            from sqlalchemy import text
+
+            async with self._postgres_session_factory() as session:
+                query = text("""
+                    SELECT
+                        id, model_name, display_name, description, category,
+                        size_label, size_bytes, is_favorite, is_installed, is_default,
+                        download_count, usage_count, total_tokens_generated,
+                        last_used_at, installed_at, created_at, updated_at
+                    FROM model_repository
+                    WHERE model_name = :model_name
+                """)
+                result = await session.execute(query, {"model_name": model_name})
+                row = result.fetchone()
+
+                if not row:
+                    return None
+
+                return {
+                    "id": row[0],
+                    "model_name": row[1],
+                    "display_name": row[2],
+                    "description": row[3],
+                    "category": row[4],
+                    "size_label": row[5],
+                    "size_bytes": row[6] or 0,
+                    "is_favorite": row[7],
+                    "is_installed": row[8],
+                    "is_default": row[9],
+                    "download_count": row[10] or 0,
+                    "usage_count": row[11] or 0,
+                    "total_tokens_generated": row[12] or 0,
+                    "last_used_at": row[13],
+                    "installed_at": row[14],
+                    "created_at": row[15],
+                    "updated_at": row[16],
+                }
+
+        except Exception as e:
+            logger.error(f"Error getting model by name: {e}")
+            return None
+
+    async def create_model_entry(
+        self,
+        model_name: str,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        category: str = "general",
+        size_label: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Create a new model entry in the repository."""
+        if not self._postgres_session_factory:
+            return None
+
+        try:
+            from sqlalchemy import text
+
+            async with self._postgres_session_factory() as session:
+                query = text("""
+                    INSERT INTO model_repository (model_name, display_name, description, category, size_label)
+                    VALUES (:model_name, :display_name, :description, :category, :size_label)
+                    ON CONFLICT (model_name) DO UPDATE SET
+                        display_name = COALESCE(EXCLUDED.display_name, model_repository.display_name),
+                        description = COALESCE(EXCLUDED.description, model_repository.description),
+                        category = COALESCE(EXCLUDED.category, model_repository.category),
+                        size_label = COALESCE(EXCLUDED.size_label, model_repository.size_label),
+                        updated_at = NOW()
+                    RETURNING id, model_name, display_name, description, category, size_label,
+                              is_favorite, is_installed, is_default, usage_count
+                """)
+                result = await session.execute(query, {
+                    "model_name": model_name,
+                    "display_name": display_name or model_name,
+                    "description": description,
+                    "category": category,
+                    "size_label": size_label,
+                })
+                await session.commit()
+                row = result.fetchone()
+
+                if row:
+                    return {
+                        "id": row[0],
+                        "model_name": row[1],
+                        "display_name": row[2],
+                        "description": row[3],
+                        "category": row[4],
+                        "size_label": row[5],
+                        "is_favorite": row[6],
+                        "is_installed": row[7],
+                        "is_default": row[8],
+                        "usage_count": row[9],
+                    }
+                return None
+
+        except Exception as e:
+            logger.error(f"Error creating model entry: {e}")
+            return None
+
+    async def update_model_entry(
+        self,
+        model_name: str,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        category: Optional[str] = None,
+        is_favorite: Optional[bool] = None,
+        is_default: Optional[bool] = None,
+        is_installed: Optional[bool] = None,
+        size_bytes: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Update a model entry in the repository."""
+        if not self._postgres_session_factory:
+            return None
+
+        try:
+            from sqlalchemy import text
+
+            updates = ["updated_at = NOW()"]
+            params = {"model_name": model_name}
+
+            if display_name is not None:
+                updates.append("display_name = :display_name")
+                params["display_name"] = display_name
+            if description is not None:
+                updates.append("description = :description")
+                params["description"] = description
+            if category is not None:
+                updates.append("category = :category")
+                params["category"] = category
+            if is_favorite is not None:
+                updates.append("is_favorite = :is_favorite")
+                params["is_favorite"] = is_favorite
+            if is_default is not None:
+                updates.append("is_default = :is_default")
+                params["is_default"] = is_default
+                # If setting as default, unset other defaults
+                if is_default:
+                    async with self._postgres_session_factory() as session:
+                        await session.execute(
+                            text("UPDATE model_repository SET is_default = FALSE WHERE model_name != :model_name"),
+                            {"model_name": model_name}
+                        )
+            if is_installed is not None:
+                updates.append("is_installed = :is_installed")
+                params["is_installed"] = is_installed
+                if is_installed:
+                    updates.append("installed_at = NOW()")
+            if size_bytes is not None:
+                updates.append("size_bytes = :size_bytes")
+                params["size_bytes"] = size_bytes
+
+            async with self._postgres_session_factory() as session:
+                query = text(f"""
+                    UPDATE model_repository
+                    SET {', '.join(updates)}
+                    WHERE model_name = :model_name
+                    RETURNING id, model_name, display_name, description, category,
+                              size_label, is_favorite, is_installed, is_default, usage_count
+                """)
+                result = await session.execute(query, params)
+                await session.commit()
+                row = result.fetchone()
+
+                if row:
+                    return {
+                        "id": row[0],
+                        "model_name": row[1],
+                        "display_name": row[2],
+                        "description": row[3],
+                        "category": row[4],
+                        "size_label": row[5],
+                        "is_favorite": row[6],
+                        "is_installed": row[7],
+                        "is_default": row[8],
+                        "usage_count": row[9],
+                    }
+                return None
+
+        except Exception as e:
+            logger.error(f"Error updating model entry: {e}")
+            return None
+
+    async def delete_model_entry(self, model_name: str) -> bool:
+        """Delete a model entry from the repository."""
+        if not self._postgres_session_factory:
+            return False
+
+        try:
+            from sqlalchemy import text
+
+            async with self._postgres_session_factory() as session:
+                query = text("DELETE FROM model_repository WHERE model_name = :model_name")
+                await session.execute(query, {"model_name": model_name})
+                await session.commit()
+                return True
+
+        except Exception as e:
+            logger.error(f"Error deleting model entry: {e}")
+            return False
+
+    async def sync_installed_models(self, installed_models: List[str]) -> None:
+        """Sync the repository with currently installed models."""
+        if not self._postgres_session_factory:
+            return
+
+        try:
+            from sqlalchemy import text
+
+            async with self._postgres_session_factory() as session:
+                # Mark all as not installed first
+                await session.execute(text("UPDATE model_repository SET is_installed = FALSE"))
+
+                # Mark installed models
+                for model_name in installed_models:
+                    await session.execute(
+                        text("""
+                            INSERT INTO model_repository (model_name, is_installed, installed_at)
+                            VALUES (:model_name, TRUE, NOW())
+                            ON CONFLICT (model_name) DO UPDATE SET
+                                is_installed = TRUE,
+                                installed_at = COALESCE(model_repository.installed_at, NOW()),
+                                updated_at = NOW()
+                        """),
+                        {"model_name": model_name}
+                    )
+
+                await session.commit()
+
+        except Exception as e:
+            logger.error(f"Error syncing installed models: {e}")
+
+    # ========================================================================
+    # Data Management Methods
+    # ========================================================================
+
+    async def clear_metrics(self) -> bool:
+        """Clear all metrics data from the database."""
+        success = True
+
+        if self.config.exporter_type in ("clickhouse", "both") and self._clickhouse_client:
+            try:
+                self._clickhouse_client.execute("TRUNCATE TABLE IF EXISTS ollama_metrics")
+                logger.info("Cleared ClickHouse metrics")
+            except Exception as e:
+                logger.error(f"Error clearing ClickHouse metrics: {e}")
+                success = False
+
+        if self.config.exporter_type in ("postgres", "both") and self._postgres_session_factory:
+            try:
+                from sqlalchemy import text
+                async with self._postgres_session_factory() as session:
+                    await session.execute(text("TRUNCATE TABLE ollama_metrics"))
+                    await session.commit()
+                logger.info("Cleared PostgreSQL metrics")
+            except Exception as e:
+                logger.error(f"Error clearing PostgreSQL metrics: {e}")
+                success = False
+
+        return success
+
+    async def clear_logs(self) -> bool:
+        """Clear all request logs from the database."""
+        success = True
+
+        if self.config.exporter_type in ("clickhouse", "both") and self._clickhouse_client:
+            try:
+                self._clickhouse_client.execute("TRUNCATE TABLE IF EXISTS request_logs")
+                logger.info("Cleared ClickHouse logs")
+            except Exception as e:
+                logger.error(f"Error clearing ClickHouse logs: {e}")
+                success = False
+
+        if self.config.exporter_type in ("postgres", "both") and self._postgres_session_factory:
+            try:
+                from sqlalchemy import text
+                async with self._postgres_session_factory() as session:
+                    await session.execute(text("TRUNCATE TABLE request_logs CASCADE"))
+                    await session.commit()
+                logger.info("Cleared PostgreSQL logs")
+            except Exception as e:
+                logger.error(f"Error clearing PostgreSQL logs: {e}")
+                success = False
+
+        return success
+
+    async def clear_all_data(self) -> Dict[str, bool]:
+        """Clear all data from metrics, logs, and reset model stats."""
+        results = {
+            "metrics_cleared": await self.clear_metrics(),
+            "logs_cleared": await self.clear_logs(),
+            "model_stats_reset": await self._reset_model_stats(),
+        }
+        return results
+
+    async def _reset_model_stats(self) -> bool:
+        """Reset usage statistics in model repository."""
+        if not self._postgres_session_factory:
+            return True  # No postgres means nothing to reset
+
+        try:
+            from sqlalchemy import text
+            async with self._postgres_session_factory() as session:
+                await session.execute(text("""
+                    UPDATE model_repository SET
+                        usage_count = 0,
+                        total_tokens_generated = 0,
+                        last_used_at = NULL,
+                        updated_at = NOW()
+                """))
+                await session.commit()
+            logger.info("Reset model repository stats")
+            return True
+        except Exception as e:
+            logger.error(f"Error resetting model stats: {e}")
+            return False
+
+    async def get_data_summary(self) -> Dict[str, Any]:
+        """Get summary of data in databases."""
+        summary = {
+            "metrics_count": 0,
+            "logs_count": 0,
+            "oldest_metric": None,
+            "newest_metric": None,
+            "databases": [],
+        }
+
+        if self.config.exporter_type in ("clickhouse", "both") and self._clickhouse_client:
+            try:
+                count = self._clickhouse_client.execute("SELECT count() FROM ollama_metrics")[0][0]
+                dates = self._clickhouse_client.execute(
+                    "SELECT min(timestamp), max(timestamp) FROM ollama_metrics"
+                )[0]
+                summary["metrics_count"] += count
+                summary["databases"].append("clickhouse")
+                if dates[0]:
+                    summary["oldest_metric"] = dates[0]
+                    summary["newest_metric"] = dates[1]
+            except Exception as e:
+                logger.error(f"Error getting ClickHouse summary: {e}")
+
+        if self.config.exporter_type in ("postgres", "both") and self._postgres_session_factory:
+            try:
+                from sqlalchemy import text
+                async with self._postgres_session_factory() as session:
+                    # Metrics count
+                    result = await session.execute(text("SELECT COUNT(*) FROM ollama_metrics"))
+                    summary["metrics_count"] += result.scalar() or 0
+
+                    # Logs count
+                    result = await session.execute(text("SELECT COUNT(*) FROM request_logs"))
+                    summary["logs_count"] = result.scalar() or 0
+
+                    # Date range
+                    result = await session.execute(text(
+                        "SELECT MIN(timestamp), MAX(timestamp) FROM ollama_metrics"
+                    ))
+                    dates = result.fetchone()
+                    if dates and dates[0]:
+                        if not summary["oldest_metric"] or dates[0] < summary["oldest_metric"]:
+                            summary["oldest_metric"] = dates[0]
+                        if not summary["newest_metric"] or dates[1] > summary["newest_metric"]:
+                            summary["newest_metric"] = dates[1]
+
+                    summary["databases"].append("postgres")
+            except Exception as e:
+                logger.error(f"Error getting PostgreSQL summary: {e}")
+
+        return summary
 
     async def get_model_stats(self) -> List[Dict[str, Any]]:
         """Get statistics per model."""

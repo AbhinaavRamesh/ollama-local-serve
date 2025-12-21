@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { LineChart, Line, ResponsiveContainer } from 'recharts'
 import { formatNumber } from '../../utils/formatters'
@@ -79,6 +80,8 @@ function Sparkline({ data, color = CHART_COLORS.primary }) {
  * @param {Array} props.sparklineData - Array of numbers for sparkline
  * @param {string} props.color - Color theme (primary, success, warning, error)
  * @param {boolean} props.loading - Loading state
+ * @param {Function} props.onClick - Click handler
+ * @param {string} props.href - Link destination
  */
 export function KPICard({
   title,
@@ -88,7 +91,11 @@ export function KPICard({
   sparklineData,
   color = 'primary',
   loading = false,
+  onClick,
+  href,
 }) {
+  const navigate = useNavigate()
+  const isClickable = onClick || href
   const colorMap = {
     primary: {
       gradient: 'from-blue-500/10 to-purple-500/10',
@@ -136,20 +143,37 @@ export function KPICard({
     )
   }
 
+  const handleClick = () => {
+    if (onClick) onClick()
+    if (href) navigate(href.replace('#', ''))
+  }
+
   return (
     <div
+      onClick={isClickable ? handleClick : undefined}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onKeyDown={isClickable ? (e) => e.key === 'Enter' && handleClick() : undefined}
       className={clsx(
         'rounded-xl border backdrop-blur-sm p-6',
         'bg-gradient-to-br',
         colors.gradient,
         colors.border,
-        'transition-all duration-300 hover:shadow-lg'
+        'transition-all duration-300 hover:shadow-lg',
+        isClickable && 'cursor-pointer hover:scale-[1.02] hover:shadow-xl'
       )}
     >
-      {/* Title */}
-      <h3 className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
-        {title}
-      </h3>
+      {/* Title with arrow indicator if clickable */}
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-medium text-slate-600 dark:text-slate-400">
+          {title}
+        </h3>
+        {isClickable && (
+          <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        )}
+      </div>
 
       {/* Value with animated counter */}
       <div className="flex items-baseline gap-2 mb-1">

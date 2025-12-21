@@ -1,5 +1,3 @@
-version: '3.8'
-
 # =============================================================================
 # Ollama Local Serve - Docker Compose Stack
 # =============================================================================
@@ -26,11 +24,11 @@ services:
           memory: ${OLLAMA_MEMORY_LIMIT:-8g}
           cpus: '${OLLAMA_CPU_LIMIT:-4.0}'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 60s
     networks:
       - ollama-network
     # Uncomment for GPU support (NVIDIA)
@@ -128,7 +126,7 @@ services:
       - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT:-120}
       # Instrumentation
       - ENABLE_INSTRUMENTATION=${ENABLE_INSTRUMENTATION:-true}
-      - EXPORTER_TYPE=${EXPORTER_TYPE:-clickhouse}
+      - EXPORTER_TYPE=${EXPORTER_TYPE:-both}
       - METRICS_EXPORT_INTERVAL=${METRICS_EXPORT_INTERVAL:-5}
       - SERVICE_NAME=${SERVICE_NAME:-ollama-local-serve}
       # ClickHouse

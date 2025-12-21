@@ -156,6 +156,7 @@ export function Overview() {
           sparklineData={sparklineData}
           color="primary"
           loading={statsLoading}
+          href="/performance"
         />
         <KPICard
           title="Tokens/Second"
@@ -164,6 +165,7 @@ export function Overview() {
           subtitle="Last hour average"
           color="success"
           loading={statsLoading}
+          href="/performance"
         />
         <KPICard
           title="Uptime"
@@ -179,6 +181,7 @@ export function Overview() {
           subtitle="Total error count"
           color={stats?.error_count > 0 ? 'error' : 'success'}
           loading={statsLoading}
+          href="/logs"
         />
       </div>
 
@@ -189,6 +192,7 @@ export function Overview() {
           value={stats?.request_count || 0}
           icon="Activity"
           loading={statsLoading}
+          href="/logs"
         />
         <StatsCard
           title="Avg Latency"
@@ -196,12 +200,14 @@ export function Overview() {
           unit="ms"
           icon="Clock"
           loading={statsLoading}
+          href="/performance"
         />
         <StatsCard
           title="Models Available"
           value={stats?.models_available || 0}
           icon="Box"
           loading={statsLoading}
+          href="/models"
         />
         <StatsCard
           title="Error Rate"
@@ -213,6 +219,7 @@ export function Overview() {
           unit="%"
           icon="AlertTriangle"
           loading={statsLoading}
+          href="/logs"
         />
       </StatsCardGrid>
 

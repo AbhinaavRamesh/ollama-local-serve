@@ -70,16 +70,16 @@ export const HEALTH_STATUS = {
   },
 }
 
-// API endpoints
+// API endpoints (baseURL already includes /api prefix)
 export const API_ENDPOINTS = {
-  health: '/api/health',
+  health: '/health',
   stats: {
-    current: '/api/stats/current',
-    history: '/api/stats/history',
-    logs: '/api/stats/logs',
+    current: '/stats/current',
+    history: '/stats/history',
+    logs: '/stats/logs',
   },
-  models: '/api/models',
-  config: '/api/config',
+  models: '/models',
+  config: '/config',
 }
 
 // Chart color palette

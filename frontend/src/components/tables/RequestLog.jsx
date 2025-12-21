@@ -1,8 +1,8 @@
 /**
- * Request log table with sorting, filtering, and pagination.
+ * Request log table with sorting, filtering, pagination, and expandable details.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { clsx } from 'clsx'
 import {
   useReactTable,
@@ -20,6 +20,16 @@ import {
   Download,
   Filter,
   X,
+  Eye,
+  Copy,
+  Check,
+  Globe,
+  Monitor,
+  User,
+  MessageSquare,
+  Bot,
+  Clock,
+  Zap,
 } from 'lucide-react'
 import { formatTimestamp, formatDuration, truncate } from '../../utils/formatters'
 import { StatusBadge } from '../dashboard/StatusIndicator'
@@ -27,18 +37,183 @@ import { TableSkeleton } from '../ui/LoadingSkeleton'
 import { NoLogsState } from '../ui/EmptyState'
 
 /**
+ * Copy to clipboard button.
+ */
+function CopyButton({ text, label }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async (e) => {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+      title={`Copy ${label}`}
+    >
+      {copied ? (
+        <>
+          <Check className="w-3 h-3 text-green-500" />
+          Copied
+        </>
+      ) : (
+        <>
+          <Copy className="w-3 h-3" />
+          Copy
+        </>
+      )}
+    </button>
+  )
+}
+
+/**
+ * Expandable log details panel.
+ */
+function LogDetails({ log }) {
+  return (
+    <div className="bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700">
+      <div className="p-4 space-y-4">
+        {/* Prompt & Response */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Prompt */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <User className="w-4 h-4 text-blue-500" />
+                Prompt
+                {log.prompt_tokens > 0 && (
+                  <span className="text-xs text-slate-500">({log.prompt_tokens} tokens)</span>
+                )}
+              </div>
+              {log.prompt_text && <CopyButton text={log.prompt_text} label="prompt" />}
+            </div>
+            <div className="bg-white dark:bg-slate-900 rounded-lg p-3 border border-slate-200 dark:border-slate-700 max-h-48 overflow-y-auto">
+              <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words font-mono">
+                {log.prompt_text || <span className="text-slate-400 italic">No prompt recorded</span>}
+              </pre>
+            </div>
+          </div>
+
+          {/* Response */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+                <Bot className="w-4 h-4 text-purple-500" />
+                Response
+                {log.tokens > 0 && (
+                  <span className="text-xs text-slate-500">({log.tokens} tokens)</span>
+                )}
+              </div>
+              {log.response_text && <CopyButton text={log.response_text} label="response" />}
+            </div>
+            <div className="bg-white dark:bg-slate-900 rounded-lg p-3 border border-slate-200 dark:border-slate-700 max-h-48 overflow-y-auto">
+              <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words font-mono">
+                {log.response_text || <span className="text-slate-400 italic">No response recorded</span>}
+              </pre>
+            </div>
+          </div>
+        </div>
+
+        {/* Metadata Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t border-slate-200 dark:border-slate-700">
+          {/* Token Stats */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <Zap className="w-3 h-3" />
+              Token Usage
+            </div>
+            <div className="text-sm text-slate-700 dark:text-slate-300">
+              <span className="font-medium">{log.total_tokens || (log.prompt_tokens || 0) + (log.tokens || 0)}</span> total
+              <span className="text-slate-400 mx-1">|</span>
+              {log.prompt_tokens || 0} in / {log.tokens || 0} out
+            </div>
+          </div>
+
+          {/* Latency */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <Clock className="w-3 h-3" />
+              Performance
+            </div>
+            <div className="text-sm text-slate-700 dark:text-slate-300">
+              <span className="font-medium">{formatDuration(log.latency)}</span>
+              {log.tokens > 0 && log.latency > 0 && (
+                <span className="text-slate-400 ml-1">
+                  ({((log.tokens / log.latency) * 1000).toFixed(1)} tok/s)
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Client IP */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <Globe className="w-3 h-3" />
+              Client IP
+            </div>
+            <div className="text-sm font-mono text-slate-700 dark:text-slate-300">
+              {log.client_ip || <span className="text-slate-400">-</span>}
+            </div>
+          </div>
+
+          {/* Origin */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <Monitor className="w-3 h-3" />
+              Origin
+            </div>
+            <div className="text-sm text-slate-700 dark:text-slate-300 truncate">
+              {log.origin || log.referer || <span className="text-slate-400">-</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* User Agent */}
+        {log.user_agent && (
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-1">
+              <Monitor className="w-3 h-3" />
+              User Agent
+            </div>
+            <div className="text-xs font-mono text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 rounded p-2 border border-slate-200 dark:border-slate-700">
+              {log.user_agent}
+            </div>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {log.error_message && (
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 border border-red-200 dark:border-red-800">
+              <div className="text-sm font-medium text-red-700 dark:text-red-400 mb-1">Error</div>
+              <div className="text-sm text-red-600 dark:text-red-300">{log.error_message}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Request ID */}
+        <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+          <span className="text-xs text-slate-500">Request ID:</span>
+          <code className="text-xs font-mono text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900 px-2 py-0.5 rounded">
+            {log.request_id}
+          </code>
+          <CopyButton text={log.request_id} label="request ID" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Request log table component.
- * @param {Object} props
- * @param {Array} props.logs - Log entries
- * @param {boolean} props.loading - Loading state
- * @param {number} props.total - Total log count
- * @param {number} props.page - Current page
- * @param {number} props.pageSize - Page size
- * @param {Function} props.onPageChange - Page change handler
- * @param {Function} props.onPageSizeChange - Page size change handler
- * @param {Object} props.filters - Current filters
- * @param {Function} props.onFilterChange - Filter change handler
- * @param {Function} props.onExport - Export handler
  */
 export function RequestLog({
   logs = [],
@@ -60,6 +235,25 @@ export function RequestLog({
   const columns = useMemo(
     () => [
       {
+        id: 'expand',
+        header: '',
+        size: 40,
+        cell: ({ row }) => {
+          const isExpanded = expandedRows[row.original.request_id]
+          return (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleRow(row.original.request_id)
+              }}
+              className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+            >
+              <Eye className={clsx('w-4 h-4', isExpanded ? 'text-blue-500' : 'text-slate-400')} />
+            </button>
+          )
+        },
+      },
+      {
         accessorKey: 'timestamp',
         header: 'Timestamp',
         cell: ({ getValue }) => (
@@ -78,13 +272,33 @@ export function RequestLog({
         ),
       },
       {
-        accessorKey: 'tokens',
+        accessorKey: 'prompt_text',
+        header: 'Prompt',
+        cell: ({ getValue }) => {
+          const text = getValue()
+          return (
+            <span className="text-sm text-slate-600 dark:text-slate-400 max-w-[200px] truncate block">
+              {text ? truncate(text, 50) : <span className="text-slate-400 italic">-</span>}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'tokens_combined',
         header: 'Tokens',
-        cell: ({ getValue }) => (
-          <span className="text-sm text-slate-600 dark:text-slate-400">
-            {getValue()?.toLocaleString() || 0}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const promptTokens = row.original.prompt_tokens || 0
+          const genTokens = row.original.tokens || 0
+          const total = row.original.total_tokens || (promptTokens + genTokens)
+          return (
+            <div className="text-sm">
+              <span className="font-medium text-slate-900 dark:text-white">{total}</span>
+              <span className="text-slate-400 text-xs ml-1">
+                ({promptTokens}/{genTokens})
+              </span>
+            </div>
+          )
+        },
       },
       {
         accessorKey: 'latency',
@@ -92,15 +306,35 @@ export function RequestLog({
         cell: ({ getValue }) => {
           const value = getValue()
           const color =
-            value > 1000
+            value > 2000
               ? 'text-red-600 dark:text-red-400'
-              : value > 500
+              : value > 1000
               ? 'text-amber-600 dark:text-amber-400'
               : 'text-emerald-600 dark:text-emerald-400'
           return (
             <span className={clsx('text-sm font-medium', color)}>
               {formatDuration(value)}
             </span>
+          )
+        },
+      },
+      {
+        accessorKey: 'client_ip',
+        header: 'Client',
+        cell: ({ getValue, row }) => {
+          const ip = getValue()
+          const origin = row.original.origin
+          return (
+            <div className="text-xs">
+              <div className="font-mono text-slate-600 dark:text-slate-400">
+                {ip || '-'}
+              </div>
+              {origin && (
+                <div className="text-slate-400 truncate max-w-[120px]" title={origin}>
+                  {origin.replace(/^https?:\/\//, '')}
+                </div>
+              )}
+            </div>
           )
         },
       },
@@ -116,17 +350,8 @@ export function RequestLog({
           )
         },
       },
-      {
-        accessorKey: 'request_id',
-        header: 'Request ID',
-        cell: ({ getValue }) => (
-          <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-            {truncate(getValue(), 12)}
-          </span>
-        ),
-      },
     ],
-    []
+    [expandedRows]
   )
 
   // React Table instance
@@ -155,7 +380,7 @@ export function RequestLog({
   const endItem = Math.min(page * pageSize, total)
 
   if (loading) {
-    return <TableSkeleton rows={5} columns={6} />
+    return <TableSkeleton rows={5} columns={8} />
   }
 
   if (logs.length === 0) {
@@ -262,10 +487,10 @@ export function RequestLog({
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    onClick={header.column.getToggleSortingHandler()}
+                    onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
                     className={clsx(
                       'px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider',
-                      header.column.getCanSort() && 'cursor-pointer select-none'
+                      header.column.getCanSort() && 'cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200'
                     )}
                   >
                     <div className="flex items-center gap-1">
@@ -291,15 +516,13 @@ export function RequestLog({
               const isExpanded = expandedRows[log.request_id]
 
               return (
-                <>
+                <Fragment key={row.id}>
                   <tr
-                    key={row.id}
-                    onClick={() => log.error_message && toggleRow(log.request_id)}
+                    onClick={() => toggleRow(log.request_id)}
                     className={clsx(
-                      'border-b border-slate-200 dark:border-slate-700 transition-colors',
-                      log.error_message && 'cursor-pointer',
+                      'border-b border-slate-200 dark:border-slate-700 transition-colors cursor-pointer',
                       isExpanded
-                        ? 'bg-slate-50 dark:bg-slate-800/50'
+                        ? 'bg-blue-50 dark:bg-blue-900/10'
                         : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
                     )}
                   >
@@ -312,21 +535,14 @@ export function RequestLog({
                       </td>
                     ))}
                   </tr>
-                  {isExpanded && log.error_message && (
-                    <tr className="bg-red-50 dark:bg-red-900/10">
-                      <td colSpan={columns.length} className="px-4 py-3">
-                        <div className="text-sm">
-                          <span className="font-medium text-red-700 dark:text-red-400">
-                            Error:{' '}
-                          </span>
-                          <span className="text-red-600 dark:text-red-300">
-                            {log.error_message}
-                          </span>
-                        </div>
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={columns.length} className="p-0">
+                        <LogDetails log={log} />
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               )
             })}
           </tbody>
@@ -367,7 +583,7 @@ export function RequestLog({
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="px-3 py-1 text-sm text-slate-600 dark:text-slate-400">
-            Page {page} of {totalPages}
+            Page {page} of {totalPages || 1}
           </span>
           <button
             onClick={() => onPageChange?.(page + 1)}

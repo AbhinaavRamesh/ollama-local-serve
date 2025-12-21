@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS ollama_metrics (
     metric_type VARCHAR(50) NOT NULL,
     metric_name VARCHAR(255) NOT NULL,
     metric_value DOUBLE PRECISION NOT NULL,
-    metadata JSONB,
+    metric_metadata JSONB,
     CONSTRAINT ollama_metrics_pkey PRIMARY KEY (id, timestamp)
 );
 
@@ -32,7 +32,11 @@ CREATE TABLE IF NOT EXISTS request_logs (
     request_id UUID NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
     timestamp TIMESTAMPTZ NOT NULL,
     model VARCHAR(255) NOT NULL,
+    prompt_text TEXT DEFAULT '',
+    response_text TEXT DEFAULT '',
+    prompt_tokens INTEGER DEFAULT 0,
     tokens_generated INTEGER NOT NULL,
+    total_tokens INTEGER DEFAULT 0,
     latency_ms INTEGER NOT NULL,
     status VARCHAR(20) NOT NULL,
     error_message TEXT,
@@ -154,6 +158,103 @@ BEGIN
     WHERE timestamp >= NOW() - time_window;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Model repository table for storing model metadata and user preferences
+CREATE TABLE IF NOT EXISTS model_repository (
+    id SERIAL PRIMARY KEY,
+    model_name VARCHAR(255) NOT NULL UNIQUE,
+    display_name VARCHAR(255),
+    description TEXT,
+    category VARCHAR(100) DEFAULT 'general',
+    size_label VARCHAR(50),
+    size_bytes BIGINT DEFAULT 0,
+    is_favorite BOOLEAN DEFAULT FALSE,
+    is_installed BOOLEAN DEFAULT FALSE,
+    is_default BOOLEAN DEFAULT FALSE,
+    download_count INTEGER DEFAULT 0,
+    usage_count INTEGER DEFAULT 0,
+    total_tokens_generated BIGINT DEFAULT 0,
+    last_used_at TIMESTAMPTZ,
+    installed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for model repository
+CREATE INDEX IF NOT EXISTS idx_model_repo_name ON model_repository (model_name);
+CREATE INDEX IF NOT EXISTS idx_model_repo_favorite ON model_repository (is_favorite) WHERE is_favorite = TRUE;
+CREATE INDEX IF NOT EXISTS idx_model_repo_installed ON model_repository (is_installed) WHERE is_installed = TRUE;
+CREATE INDEX IF NOT EXISTS idx_model_repo_category ON model_repository (category);
+CREATE INDEX IF NOT EXISTS idx_model_repo_usage ON model_repository (usage_count DESC);
+
+-- Function to update model usage stats
+CREATE OR REPLACE FUNCTION update_model_usage()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO model_repository (model_name, usage_count, total_tokens_generated, last_used_at, is_installed)
+    VALUES (NEW.model, 1, NEW.tokens_generated, NEW.timestamp, TRUE)
+    ON CONFLICT (model_name) DO UPDATE SET
+        usage_count = model_repository.usage_count + 1,
+        total_tokens_generated = model_repository.total_tokens_generated + NEW.tokens_generated,
+        last_used_at = NEW.timestamp,
+        is_installed = TRUE,
+        updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to auto-update model usage on new request logs
+DROP TRIGGER IF EXISTS trigger_update_model_usage ON request_logs;
+CREATE TRIGGER trigger_update_model_usage
+    AFTER INSERT ON request_logs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_model_usage();
+
+-- Insert default popular models into repository
+INSERT INTO model_repository (model_name, display_name, description, category, size_label) VALUES
+    ('llama3.2', 'Llama 3.2', 'Meta''s Llama 3.2 - latest and most capable', 'general', '1B-90B'),
+    ('llama3.1', 'Llama 3.1', 'Meta''s Llama 3.1 - powerful open model', 'general', '8B-405B'),
+    ('gemma3:1b', 'Gemma 3 1B', 'Google''s Gemma 3 - compact 1B model', 'general', '1B'),
+    ('gemma3:4b', 'Gemma 3 4B', 'Google''s Gemma 3 - balanced 4B model', 'general', '4B'),
+    ('gemma2', 'Gemma 2', 'Google''s Gemma 2 model', 'general', '2B-27B'),
+    ('nemotron-mini', 'Nemotron Mini', 'NVIDIA Nemotron Mini - efficient small model', 'general', '4B'),
+    ('mistral', 'Mistral 7B', 'Mistral AI''s 7B model - fast and efficient', 'general', '7B'),
+    ('mixtral', 'Mixtral 8x7B', 'Mistral''s mixture of experts model', 'general', '8x7B'),
+    ('phi3', 'Phi-3', 'Microsoft''s small but capable model', 'general', '3.8B'),
+    ('phi3:mini', 'Phi-3 Mini', 'Microsoft Phi-3 Mini', 'general', '3.8B'),
+    ('qwen2.5', 'Qwen 2.5', 'Alibaba''s Qwen 2.5 model', 'general', '0.5B-72B'),
+    ('qwen2.5:1.5b', 'Qwen 2.5 1.5B', 'Alibaba''s Qwen 2.5 - tiny variant', 'general', '1.5B'),
+    ('codellama', 'Code Llama', 'Meta''s code-specialized Llama', 'coding', '7B-34B'),
+    ('deepseek-coder', 'DeepSeek Coder', 'DeepSeek''s coding model', 'coding', '1.3B-33B'),
+    ('deepseek-coder-v2', 'DeepSeek Coder V2', 'DeepSeek Coder V2 - improved coding', 'coding', '16B-236B'),
+    ('starcoder2', 'StarCoder 2', 'BigCode''s StarCoder 2', 'coding', '3B-15B'),
+    ('tinyllama', 'TinyLlama', 'Tiny but fast for testing', 'general', '1.1B'),
+    ('neural-chat', 'Neural Chat', 'Intel''s neural chat model', 'chat', '7B'),
+    ('starling-lm', 'Starling LM', 'Berkeley''s Starling model', 'chat', '7B'),
+    ('dolphin-mixtral', 'Dolphin Mixtral', 'Uncensored Mixtral variant', 'general', '8x7B')
+ON CONFLICT (model_name) DO NOTHING;
+
+-- View for model repository with usage stats
+CREATE OR REPLACE VIEW model_repository_stats AS
+SELECT
+    mr.*,
+    COALESCE(rs.request_count, 0) AS total_requests,
+    COALESCE(rs.avg_latency, 0) AS avg_latency_ms,
+    COALESCE(rs.error_rate, 0) AS error_rate
+FROM model_repository mr
+LEFT JOIN (
+    SELECT
+        model,
+        COUNT(*) AS request_count,
+        AVG(latency_ms) AS avg_latency,
+        (COUNT(*) FILTER (WHERE status = 'error')::FLOAT / NULLIF(COUNT(*), 0) * 100) AS error_rate
+    FROM request_logs
+    WHERE timestamp > NOW() - INTERVAL '30 days'
+    GROUP BY model
+) rs ON mr.model_name = rs.model;
+
+COMMENT ON TABLE model_repository IS 'Stores model metadata, preferences, and usage statistics';
+COMMENT ON VIEW model_repository_stats IS 'Model repository with aggregated usage statistics';
 
 -- Grant permissions (adjust as needed)
 -- GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO ollama_app;

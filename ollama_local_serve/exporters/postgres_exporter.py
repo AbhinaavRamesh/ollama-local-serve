@@ -58,7 +58,7 @@ class OllamaMetrics(Base):
     metric_type = Column(String(50), nullable=False)
     metric_name = Column(String(255), nullable=False)
     metric_value = Column(Float, nullable=False)
-    metadata = Column(JSONB, nullable=True)
+    metric_metadata = Column(JSONB, nullable=True)
 
 
 class RequestLogs(Base):
@@ -319,7 +319,7 @@ class PostgresExporter(BaseExporter):
                         metric_type=record.metric_type.value,
                         metric_name=record.metric_name,
                         metric_value=record.metric_value,
-                        metadata=record.metadata,
+                        metric_metadata=record.metadata,
                     )
                     for record in records
                 ]
