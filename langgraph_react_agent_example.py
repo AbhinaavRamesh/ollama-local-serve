@@ -7,7 +7,6 @@ and tool use to solve complex problems.
 
 Prerequisites:
     pip install ollama-local-serve[langgraph]
-    pip install langchain-community
 """
 
 import asyncio
@@ -114,9 +113,7 @@ async def create_react_agent_example():
 
         # Check if LangGraph is available
         if not LANGGRAPH_AVAILABLE:
-            logger.error(
-                "langgraph is not installed. " "Install it with: pip install langgraph"
-            )
+            logger.error("langgraph is not installed. " "Install it with: pip install langgraph")
             return
 
         # Create the ReAct agent
@@ -164,9 +161,7 @@ async def create_react_agent_example():
         logger.error(f"Missing dependency: {e}")
         logger.info(
             "\nTo run this example, install required packages:\n"
-            "  pip install ollama-local-serve[langchain]\n"
-            "  pip install langgraph\n"
-            "  pip install langchain-community"
+            "  pip install ollama-local-serve[langgraph]\n"
         )
     except Exception as e:
         logger.error(f"Error in ReAct agent example: {e}", exc_info=True)
@@ -206,9 +201,7 @@ async def advanced_react_agent_example():
 
         # Check if LangGraph is available
         if not LANGGRAPH_AVAILABLE:
-            logger.error(
-                "langgraph is not installed. " "Install it with: pip install langgraph"
-            )
+            logger.error("langgraph is not installed. " "Install it with: pip install langgraph")
             return
 
         # Create agent
@@ -278,9 +271,7 @@ if __name__ == "__main__":
     logger.info("Prerequisites:")
     logger.info("  1. Ollama must be installed on your system")
     logger.info("  2. Install required packages:")
-    logger.info("     pip install ollama-local-serve[langchain]")
-    logger.info("     pip install langgraph")
-    logger.info("     pip install langchain-community")
+    logger.info("     pip install ollama-local-serve[langgraph]")
     logger.info("  3. Pull a model: ollama pull llama3.2")
     logger.info("=" * 60 + "\n")
 
