@@ -129,12 +129,16 @@ def create_langchain_chat_client(
         ```
     """
     try:
-        from langchain_community.chat_models import ChatOllama
+        from langchain_ollama import ChatOllama
     except ImportError:
-        raise ImportError(
-            "langchain-community is required for LangChain integration. "
-            "Install it with: pip install langchain-community"
-        )
+        # Fallback to community version for backwards compatibility
+        try:
+            from langchain_community.chat_models import ChatOllama
+        except ImportError:
+            raise ImportError(
+                "langchain-ollama is required for LangChain integration. "
+                "Install it with: pip install langchain-ollama"
+            )
 
     # Determine the base URL
     if base_url is None:

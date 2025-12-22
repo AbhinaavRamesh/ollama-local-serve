@@ -35,6 +35,9 @@ pip install ollama-local-serve
 # With LangChain integration
 pip install ollama-local-serve[langchain]
 
+# With LangGraph integration (includes LangChain)
+pip install ollama-local-serve[langgraph]
+
 # With full monitoring stack
 pip install ollama-local-serve[monitoring]
 
@@ -300,6 +303,34 @@ response = llm.invoke("What is the meaning of life?")
 print(response)
 ```
 
+### LangGraph ReAct Agent
+
+For advanced use cases, you can use LangGraph's prebuilt ReAct agent with Ollama:
+
+```python
+from ollama_local_serve import OllamaService, NetworkConfig, create_langchain_chat_client
+from langgraph.prebuilt import create_react_agent
+from langchain_core.tools import tool
+
+# Define tools for the agent
+@tool
+def cube(x: float) -> float:
+    """Calculate the cube of a number."""
+    return x ** 3
+
+# Start Ollama service and create agent
+config = NetworkConfig()
+async with OllamaService(config) as service:
+    llm = create_langchain_chat_client(config=config, model="llama3.2")
+    agent = create_react_agent(llm, [cube])
+    
+    response = await agent.ainvoke({"messages": [("user", "What is 5 cubed?")]})
+    print(response["messages"][-1].content)
+```
+
+See `langgraph_react_agent_example.py` for a complete working example with multiple tools.
+
+
 ## Project Structure
 
 ```
@@ -352,6 +383,7 @@ pip install ollama-local-serve
 
 # With specific features
 pip install ollama-local-serve[langchain]      # LangChain integration
+pip install ollama-local-serve[langgraph]      # LangGraph integration (includes LangChain)
 pip install ollama-local-serve[api]            # FastAPI server
 pip install ollama-local-serve[instrumentation] # OpenTelemetry
 pip install ollama-local-serve[clickhouse]     # ClickHouse exporter
