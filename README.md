@@ -289,6 +289,8 @@ DELETE /api/data/all       - Clear all data
 
 ## LangChain Integration
 
+> **Note:** This package prefers `langchain-ollama` (the newer package) over `langchain-community`. Install with: `pip install langchain-ollama`
+
 ```python
 from ollama_local_serve import create_langchain_client, NetworkConfig
 
@@ -305,10 +307,14 @@ print(response)
 
 ### LangGraph ReAct Agent
 
-For advanced use cases, you can use LangGraph's prebuilt ReAct agent with Ollama:
+For advanced use cases, you can use LangGraph's prebuilt ReAct agent with Ollama.
+
+**Prerequisites:**
+- Ollama must be running (e.g., `ollama serve`)
+- A model must be available (e.g., `ollama pull llama3.2:1b`)
 
 ```python
-from ollama_local_serve import OllamaService, NetworkConfig, create_langchain_chat_client
+from ollama_local_serve import NetworkConfig, create_langchain_chat_client
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
 
@@ -318,17 +324,36 @@ def cube(x: float) -> float:
     """Calculate the cube of a number."""
     return x ** 3
 
-# Start Ollama service and create agent
-config = NetworkConfig()
-async with OllamaService(config) as service:
-    llm = create_langchain_chat_client(config=config, model="llama3.2")
-    agent = create_react_agent(llm, [cube])
-    
-    response = await agent.ainvoke({"messages": [("user", "What is 5 cubed?")]})
-    print(response["messages"][-1].content)
+# Connect to existing Ollama service (must be running)
+config = NetworkConfig(
+    host="127.0.0.1",  # Use 127.0.0.1 for client connections
+    port=11434,
+    timeout=120,  # Longer timeout for LLM operations
+)
+
+llm = create_langchain_chat_client(config=config, model="llama3.2:1b")
+agent = create_react_agent(llm, [cube])
+
+response = await agent.ainvoke({"messages": [("user", "What is 5 cubed?")]})
+print(response["messages"][-1].content)
 ```
 
 See `langgraph_react_agent_example.py` for a complete working example with multiple tools.
+
+#### Running Tests
+
+The LangGraph example includes a comprehensive test suite:
+
+```bash
+# Run unit tests (no Ollama required)
+python test_langgraph_react_agent.py
+
+# Run integration tests (requires Ollama running)
+python test_langgraph_react_agent.py --integration
+
+# Run with verbose output
+python test_langgraph_react_agent.py -v
+```
 
 
 ## Project Structure
