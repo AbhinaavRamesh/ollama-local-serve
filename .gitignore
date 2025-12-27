@@ -197,6 +197,7 @@ temp/
 *.tmp
 *.temp
 *.bak
+Testing_Instructions/*
 
 # -----------------------------------------------------------------------------
 # Project Specific

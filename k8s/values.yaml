@@ -1,0 +1,333 @@
+# =============================================================================
+# Ollama Local Serve - Helm Values
+# =============================================================================
+# Configuration for single-GPU deployment with monitoring
+
+global:
+  # Namespace for all resources
+  namespace: ollama
+
+# =============================================================================
+# Ollama LLM Service
+# =============================================================================
+ollama:
+  enabled: true
+  replicaCount: 1  # Single GPU deployment
+
+  image:
+    repository: ollama/ollama
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 11434
+
+  # Resource limits (adjust based on your GPU)
+  resources:
+    limits:
+      memory: "16Gi"
+      cpu: "4"
+      nvidia.com/gpu: "1"  # Single GPU
+    requests:
+      memory: "8Gi"
+      cpu: "2"
+
+  # GPU configuration
+  gpu:
+    enabled: true
+    type: nvidia  # nvidia or amd
+
+  # Persistent storage for models
+  persistence:
+    enabled: true
+    storageClass: ""  # Use default storage class
+    accessMode: ReadWriteOnce
+    size: 50Gi  # Adjust based on models you plan to use
+
+  # Environment variables
+  env:
+    OLLAMA_HOST: "0.0.0.0"
+    OLLAMA_ORIGINS: "*"
+    # Uncomment to set default models
+    # OLLAMA_MODELS: "llama3.2"
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 5
+    httpGet:
+      path: /api/tags
+      port: 11434
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    httpGet:
+      path: /api/tags
+      port: 11434
+
+  # Node selector for GPU nodes
+  nodeSelector: {}
+    # nvidia.com/gpu.present: "true"
+
+  tolerations: []
+    # - key: nvidia.com/gpu
+    #   operator: Exists
+    #   effect: NoSchedule
+
+  affinity: {}
+
+# =============================================================================
+# API Monitoring Service
+# =============================================================================
+api:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: ollama-monitor
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8000
+
+  resources:
+    limits:
+      memory: "512Mi"
+      cpu: "1"
+    requests:
+      memory: "256Mi"
+      cpu: "500m"
+
+  # Environment variables
+  env:
+    LOG_LEVEL: "INFO"
+    ENABLE_INSTRUMENTATION: "true"
+    EXPORTER_TYPE: "clickhouse"  # clickhouse, postgres, both
+    METRICS_EXPORT_INTERVAL: "5"
+
+  # Init container for database schema migration
+  initContainers:
+    enabled: true
+
+  # Probes
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    httpGet:
+      path: /healthz
+      port: 8000
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    httpGet:
+      path: /readyz
+      port: 8000
+
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Frontend Dashboard
+# =============================================================================
+frontend:
+  enabled: true
+  replicaCount: 2
+
+  image:
+    repository: ollama-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    limits:
+      memory: "128Mi"
+      cpu: "500m"
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+
+  env:
+    VITE_API_URL: "/api"
+
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /health
+      port: 80
+
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /health
+      port: 80
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+ingress:
+  enabled: true
+  className: nginx
+
+  annotations: {}
+    # nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+
+  hosts:
+    - host: ollama.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: api
+        - path: /api/generate
+          pathType: Prefix
+          service: ollama
+
+  tls: []
+    # - secretName: ollama-tls
+    #   hosts:
+    #     - ollama.local
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+
+# ClickHouse (time-series metrics)
+clickhouse:
+  enabled: true
+
+  # Using Bitnami ClickHouse chart
+  auth:
+    username: default
+    password: ""
+
+  persistence:
+    enabled: true
+    size: 10Gi
+
+  resources:
+    limits:
+      memory: "4Gi"
+      cpu: "2"
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+
+# PostgreSQL with TimescaleDB
+postgresql:
+  enabled: true
+
+  # Using Bitnami PostgreSQL chart
+  auth:
+    username: ollama
+    password: ""  # Will be auto-generated if empty
+    database: ollama_metrics
+
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+    resources:
+      limits:
+        memory: "1Gi"
+        cpu: "1"
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+
+    # Enable TimescaleDB extension
+    initdb:
+      scripts:
+        enable-timescale.sql: |
+          CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+# =============================================================================
+# Prometheus Monitoring (ServiceMonitor)
+# =============================================================================
+monitoring:
+  enabled: true
+
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 10s
+    labels: {}
+
+  prometheusRule:
+    enabled: false
+    rules: []
+
+# =============================================================================
+# ConfigMap and Secrets
+# =============================================================================
+config:
+  # Database connection settings (loaded from secrets)
+  clickhouse:
+    host: "{{ .Release.Name }}-clickhouse"
+    port: 9000
+    database: ollama_metrics
+
+  postgres:
+    host: "{{ .Release.Name }}-postgresql"
+    port: 5432
+    database: ollama_metrics
+
+secrets:
+  # Database passwords (auto-generated if empty)
+  clickhousePassword: ""
+  postgresPassword: ""
+
+# =============================================================================
+# Pod Disruption Budget
+# =============================================================================
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# =============================================================================
+# Network Policies
+# =============================================================================
+networkPolicy:
+  enabled: false
+  # Add network policy rules here
+
+# =============================================================================
+# Service Account
+# =============================================================================
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}

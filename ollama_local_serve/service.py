@@ -4,22 +4,22 @@ Ollama service management with async support and metrics instrumentation.
 
 import asyncio
 import logging
-import subprocess
-import signal
 import os
+import signal
+import subprocess
 import time
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 import aiohttp
 
 from ollama_local_serve.config import NetworkConfig
 from ollama_local_serve.exceptions import (
-    ServiceStartError,
-    ServiceStopError,
     ConnectionError,
     HealthCheckError,
+    ServiceStartError,
+    ServiceStopError,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,22 +27,23 @@ logger = logging.getLogger(__name__)
 # Lazy imports for instrumentation (only loaded when enabled)
 _instrumentation_available = False
 try:
+    from ollama_local_serve.exporters import (
+        BaseExporter,
+        ClickHouseConfig,
+        ClickHouseExporter,
+        MetricRecord,
+        MetricType,
+        PostgresConfig,
+        PostgresExporter,
+        RequestLogRecord,
+    )
     from ollama_local_serve.instrumentation import (
-        MetricsProvider,
         InstrumentationConfig,
+        MetricsProvider,
         TracerManager,
         TracingConfig,
     )
-    from ollama_local_serve.exporters import (
-        ClickHouseExporter,
-        ClickHouseConfig,
-        PostgresExporter,
-        PostgresConfig,
-        MetricRecord,
-        RequestLogRecord,
-        MetricType,
-        BaseExporter,
-    )
+
     _instrumentation_available = True
 except ImportError:
     logger.debug("Instrumentation modules not available, metrics disabled")
@@ -99,7 +100,7 @@ class OllamaService:
 
     def __init__(
         self,
-        config: Optional[NetworkConfig] = None,
+        config: NetworkConfig | None = None,
         ollama_binary: str = "ollama",
     ) -> None:
         """
@@ -111,14 +112,14 @@ class OllamaService:
         """
         self.config = config or NetworkConfig()
         self.ollama_binary = ollama_binary
-        self._process: Optional[subprocess.Popen] = None
+        self._process: subprocess.Popen | None = None
         self._is_running = False
-        self._start_time: Optional[float] = None
+        self._start_time: float | None = None
 
         # Instrumentation components (initialized on start if enabled)
-        self._metrics_provider: Optional[Any] = None
-        self._tracer_manager: Optional[Any] = None
-        self._exporters: List[Any] = []
+        self._metrics_provider: Any | None = None
+        self._tracer_manager: Any | None = None
+        self._exporters: list[Any] = []
         self._instrumentation_enabled = (
             self.config.enable_instrumentation and _instrumentation_available
         )
@@ -237,7 +238,7 @@ class OllamaService:
         metric_name: str,
         metric_value: float,
         metric_type: str = "request",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Record a metric to all exporters."""
         if not self._instrumentation_enabled or not self._exporters:
@@ -265,7 +266,7 @@ class OllamaService:
         tokens_generated: int,
         latency_ms: int,
         status: str,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> None:
         """Record a request log to all exporters."""
         if not self._instrumentation_enabled or not self._exporters:
@@ -306,9 +307,7 @@ class OllamaService:
         start_time = time.perf_counter()
 
         try:
-            logger.info(
-                f"Starting Ollama service on {self.config.host}:{self.config.port}"
-            )
+            logger.info(f"Starting Ollama service on {self.config.host}:{self.config.port}")
 
             # Initialize instrumentation before starting service
             await self._initialize_instrumentation()
@@ -332,9 +331,7 @@ class OllamaService:
             # Check if process is still running
             if self._process.poll() is not None:
                 stderr = self._process.stderr.read().decode() if self._process.stderr else ""
-                raise ServiceStartError(
-                    f"Ollama process terminated immediately. stderr: {stderr}"
-                )
+                raise ServiceStartError(f"Ollama process terminated immediately. stderr: {stderr}")
 
             # Verify service is accessible
             try:
@@ -346,15 +343,11 @@ class OllamaService:
                 # Record start metric
                 elapsed_ms = (time.perf_counter() - start_time) * 1000
                 if self._metrics_provider:
-                    self._metrics_provider.record_request(
-                        model="service", status="success"
-                    )
+                    self._metrics_provider.record_request(model="service", status="success")
                     self._metrics_provider.record_latency(
                         elapsed_ms, model="service", operation="start"
                     )
-                self._record_metric(
-                    "service_start_latency_ms", elapsed_ms, "system"
-                )
+                self._record_metric("service_start_latency_ms", elapsed_ms, "system")
 
             except HealthCheckError as e:
                 # Service started but health check failed
@@ -364,9 +357,7 @@ class OllamaService:
 
         except FileNotFoundError:
             if self._metrics_provider:
-                self._metrics_provider.record_error(
-                    error_type="FileNotFoundError", model="service"
-                )
+                self._metrics_provider.record_error(error_type="FileNotFoundError", model="service")
             self._record_metric("service_errors_total", 1, "error")
             raise ServiceStartError(
                 f"Ollama binary not found: {self.ollama_binary}. "
@@ -375,9 +366,7 @@ class OllamaService:
         except Exception as e:
             logger.error(f"Failed to start Ollama service: {e}")
             if self._metrics_provider:
-                self._metrics_provider.record_error(
-                    error_type=type(e).__name__, model="service"
-                )
+                self._metrics_provider.record_error(error_type=type(e).__name__, model="service")
             self._record_metric("service_errors_total", 1, "error")
             # Clean up if start failed
             if self._process:
@@ -437,12 +426,8 @@ class OllamaService:
             # Record stop metric
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             if self._metrics_provider:
-                self._metrics_provider.record_request(
-                    model="service", status="success"
-                )
-                self._metrics_provider.record_latency(
-                    elapsed_ms, model="service", operation="stop"
-                )
+                self._metrics_provider.record_request(model="service", status="success")
+                self._metrics_provider.record_latency(elapsed_ms, model="service", operation="stop")
             self._record_metric("service_stop_latency_ms", elapsed_ms, "system")
 
             logger.info("Ollama service stopped successfully")
@@ -450,9 +435,7 @@ class OllamaService:
         except Exception as e:
             logger.error(f"Failed to stop Ollama service: {e}")
             if self._metrics_provider:
-                self._metrics_provider.record_error(
-                    error_type=type(e).__name__, model="service"
-                )
+                self._metrics_provider.record_error(error_type=type(e).__name__, model="service")
             self._record_metric("service_errors_total", 1, "error")
             raise ServiceStopError(f"Failed to stop Ollama service: {e}")
         finally:
@@ -460,7 +443,7 @@ class OllamaService:
             await self._shutdown_instrumentation()
             self._start_time = None
 
-    async def health_check(self, retries: Optional[int] = None) -> bool:
+    async def health_check(self, retries: int | None = None) -> bool:
         """
         Check if the Ollama service is healthy and responsive.
 
@@ -495,15 +478,11 @@ class OllamaService:
                                 self._metrics_provider.record_latency(
                                     elapsed_ms, model="health_check", operation="health_check"
                                 )
-                            self._record_metric(
-                                "health_check_latency_ms", elapsed_ms, "system"
-                            )
+                            self._record_metric("health_check_latency_ms", elapsed_ms, "system")
 
                             return True
                         else:
-                            logger.warning(
-                                f"Health check returned status {response.status}"
-                            )
+                            logger.warning(f"Health check returned status {response.status}")
             except aiohttp.ClientError as e:
                 logger.debug(f"Health check attempt {attempt + 1} failed: {e}")
                 if attempt < max_retries:
@@ -515,9 +494,7 @@ class OllamaService:
                             error_type="ConnectionError", model="health_check"
                         )
                     self._record_metric("health_check_errors_total", 1, "error")
-                    raise ConnectionError(
-                        f"Failed to connect to Ollama service at {url}: {e}"
-                    )
+                    raise ConnectionError(f"Failed to connect to Ollama service at {url}: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error during health check: {e}")
                 if self._metrics_provider:
@@ -532,11 +509,9 @@ class OllamaService:
                 error_type="MaxRetriesExceeded", model="health_check"
             )
         self._record_metric("health_check_errors_total", 1, "error")
-        raise HealthCheckError(
-            f"Health check failed after {max_retries + 1} attempts"
-        )
+        raise HealthCheckError(f"Health check failed after {max_retries + 1} attempts")
 
-    async def get_models(self) -> Dict[str, Any]:
+    async def get_models(self) -> dict[str, Any]:
         """
         Get list of available models from the Ollama service.
 
@@ -565,15 +540,11 @@ class OllamaService:
                             self._metrics_provider.record_latency(
                                 elapsed_ms, model="get_models", operation="get_models"
                             )
-                        self._record_metric(
-                            "get_models_latency_ms", elapsed_ms, "model"
-                        )
+                        self._record_metric("get_models_latency_ms", elapsed_ms, "model")
 
                         # Record model count
                         model_count = len(result.get("models", []))
-                        self._record_metric(
-                            "available_models_count", float(model_count), "model"
-                        )
+                        self._record_metric("available_models_count", float(model_count), "model")
 
                         return result
                     else:
@@ -582,9 +553,7 @@ class OllamaService:
                                 error_type="HTTPError", model="get_models"
                             )
                         self._record_metric("get_models_errors_total", 1, "error")
-                        raise ConnectionError(
-                            f"Failed to get models: HTTP {response.status}"
-                        )
+                        raise ConnectionError(f"Failed to get models: HTTP {response.status}")
         except aiohttp.ClientError as e:
             if self._metrics_provider:
                 self._metrics_provider.record_error(
@@ -599,7 +568,7 @@ class OllamaService:
         prompt: str,
         stream: bool = False,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Generate a response from the Ollama model.
 
@@ -626,7 +595,9 @@ class OllamaService:
         }
 
         try:
-            timeout = aiohttp.ClientTimeout(total=self.config.timeout * 10)  # Longer timeout for generation
+            timeout = aiohttp.ClientTimeout(
+                total=self.config.timeout * 10
+            )  # Longer timeout for generation
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(url, json=payload) as response:
                     if response.status == 200:
@@ -638,12 +609,8 @@ class OllamaService:
 
                         # Record metrics
                         if self._metrics_provider:
-                            self._metrics_provider.record_request(
-                                model=model, status="success"
-                            )
-                            self._metrics_provider.record_tokens_generated(
-                                tokens, model=model
-                            )
+                            self._metrics_provider.record_request(model=model, status="success")
+                            self._metrics_provider.record_tokens_generated(tokens, model=model)
                             self._metrics_provider.record_latency(
                                 elapsed_ms, model=model, operation="generate"
                             )
@@ -656,17 +623,14 @@ class OllamaService:
                             status="success",
                         )
                         self._record_metric(
-                            "tokens_generated", float(tokens), "request",
-                            {"model": model}
+                            "tokens_generated", float(tokens), "request", {"model": model}
                         )
 
                         return result
                     else:
                         error_msg = f"Generation failed: HTTP {response.status}"
                         if self._metrics_provider:
-                            self._metrics_provider.record_error(
-                                error_type="HTTPError", model=model
-                            )
+                            self._metrics_provider.record_error(error_type="HTTPError", model=model)
                         self._record_request_log(
                             model=model,
                             tokens_generated=0,
@@ -679,9 +643,7 @@ class OllamaService:
         except aiohttp.ClientError as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             if self._metrics_provider:
-                self._metrics_provider.record_error(
-                    error_type="ConnectionError", model=model
-                )
+                self._metrics_provider.record_error(error_type="ConnectionError", model=model)
             self._record_request_log(
                 model=model,
                 tokens_generated=0,
@@ -714,7 +676,7 @@ class OllamaService:
         return self._instrumentation_enabled
 
     @property
-    def metrics_provider(self) -> Optional[Any]:
+    def metrics_provider(self) -> Any | None:
         """Get the metrics provider for custom instrumentation."""
         return self._metrics_provider
 

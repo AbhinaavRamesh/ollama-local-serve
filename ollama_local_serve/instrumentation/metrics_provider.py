@@ -7,17 +7,18 @@ including request counts, token generation, latency, and error tracking.
 
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, Callable
+from collections.abc import Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from typing import Any
 
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import (
-    PeriodicExportingMetricReader,
     ConsoleMetricExporter,
+    PeriodicExportingMetricReader,
 )
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class MetricsProvider:
         ```
     """
 
-    def __init__(self, config: Optional[InstrumentationConfig] = None) -> None:
+    def __init__(self, config: InstrumentationConfig | None = None) -> None:
         """
         Initialize the metrics provider.
 
@@ -75,26 +76,26 @@ class MetricsProvider:
             config: Instrumentation configuration. Uses defaults if None.
         """
         self.config = config or InstrumentationConfig()
-        self._meter: Optional[metrics.Meter] = None
-        self._meter_provider: Optional[MeterProvider] = None
+        self._meter: metrics.Meter | None = None
+        self._meter_provider: MeterProvider | None = None
         self._initialized = False
 
         # Metric instruments
-        self._requests_total: Optional[metrics.Counter] = None
-        self._tokens_generated: Optional[metrics.Counter] = None
-        self._errors_total: Optional[metrics.Counter] = None
-        self._latency_histogram: Optional[metrics.Histogram] = None
+        self._requests_total: metrics.Counter | None = None
+        self._tokens_generated: metrics.Counter | None = None
+        self._errors_total: metrics.Counter | None = None
+        self._latency_histogram: metrics.Histogram | None = None
 
         # System metrics
-        self._uptime_gauge: Optional[metrics.ObservableGauge] = None
+        self._uptime_gauge: metrics.ObservableGauge | None = None
         self._start_time: float = time.time()
 
         # Callback storage for observable instruments
-        self._observable_callbacks: Dict[str, Callable] = {}
+        self._observable_callbacks: dict[str, Callable] = {}
 
         logger.info(f"MetricsProvider created with config: {self.config}")
 
-    def initialize(self, custom_exporter: Optional[Any] = None) -> None:
+    def initialize(self, custom_exporter: Any | None = None) -> None:
         """
         Initialize the metrics provider and create all instruments.
 
@@ -211,7 +212,7 @@ class MetricsProvider:
         self,
         model: str = "unknown",
         status: str = "success",
-        attributes: Optional[Dict[str, str]] = None,
+        attributes: dict[str, str] | None = None,
     ) -> None:
         """
         Record a request.
@@ -235,7 +236,7 @@ class MetricsProvider:
         self,
         count: int,
         model: str = "unknown",
-        attributes: Optional[Dict[str, str]] = None,
+        attributes: dict[str, str] | None = None,
     ) -> None:
         """
         Record tokens generated.
@@ -259,7 +260,7 @@ class MetricsProvider:
         self,
         error_type: str = "unknown",
         model: str = "unknown",
-        attributes: Optional[Dict[str, str]] = None,
+        attributes: dict[str, str] | None = None,
     ) -> None:
         """
         Record an error.
@@ -284,7 +285,7 @@ class MetricsProvider:
         latency_ms: float,
         model: str = "unknown",
         operation: str = "request",
-        attributes: Optional[Dict[str, str]] = None,
+        attributes: dict[str, str] | None = None,
     ) -> None:
         """
         Record request latency.
@@ -361,7 +362,7 @@ class MetricsProvider:
         """Check if the metrics provider is initialized."""
         return self._initialized
 
-    def get_meter(self) -> Optional[metrics.Meter]:
+    def get_meter(self) -> metrics.Meter | None:
         """Get the underlying OTEL meter for custom instrumentation."""
         return self._meter
 
@@ -374,8 +375,8 @@ class RequestTracker:
     Used within the track_request context manager to set additional metrics.
     """
 
-    tokens: Optional[int] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    tokens: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def set_tokens(self, count: int) -> None:
         """Set the token count for this request."""

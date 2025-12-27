@@ -10,8 +10,8 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Dict, Any
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +44,9 @@ class MetricRecord:
     metric_type: MetricType
     metric_name: str
     metric_value: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -79,9 +79,9 @@ class RequestLogRecord:
     tokens_generated: int
     latency_ms: int
     status: str
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "request_id": self.request_id,
@@ -148,7 +148,7 @@ class BaseExporter(ABC):
         ```
     """
 
-    def __init__(self, config: Optional[ExporterConfig] = None) -> None:
+    def __init__(self, config: ExporterConfig | None = None) -> None:
         """
         Initialize the exporter.
 
@@ -156,11 +156,11 @@ class BaseExporter(ABC):
             config: Exporter configuration. Uses defaults if None.
         """
         self.config = config or ExporterConfig()
-        self._metrics_buffer: List[MetricRecord] = []
-        self._logs_buffer: List[RequestLogRecord] = []
+        self._metrics_buffer: list[MetricRecord] = []
+        self._logs_buffer: list[RequestLogRecord] = []
         self._is_connected = False
         self._is_running = False
-        self._flush_task: Optional[asyncio.Task] = None
+        self._flush_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
 
         logger.info(f"Exporter initialized with config: {self.config}")
@@ -181,7 +181,7 @@ class BaseExporter(ABC):
         pass
 
     @abstractmethod
-    async def _write_metrics_batch(self, records: List[MetricRecord]) -> None:
+    async def _write_metrics_batch(self, records: list[MetricRecord]) -> None:
         """
         Write a batch of metrics to the database.
 
@@ -194,7 +194,7 @@ class BaseExporter(ABC):
         pass
 
     @abstractmethod
-    async def _write_logs_batch(self, records: List[RequestLogRecord]) -> None:
+    async def _write_logs_batch(self, records: list[RequestLogRecord]) -> None:
         """
         Write a batch of request logs to the database.
 
@@ -301,22 +301,18 @@ class BaseExporter(ABC):
             if self._metrics_buffer:
                 metrics_to_flush = self._metrics_buffer.copy()
                 self._metrics_buffer.clear()
-                await self._write_with_retry(
-                    self._write_metrics_batch, metrics_to_flush, "metrics"
-                )
+                await self._write_with_retry(self._write_metrics_batch, metrics_to_flush, "metrics")
 
             # Flush logs
             if self._logs_buffer:
                 logs_to_flush = self._logs_buffer.copy()
                 self._logs_buffer.clear()
-                await self._write_with_retry(
-                    self._write_logs_batch, logs_to_flush, "logs"
-                )
+                await self._write_with_retry(self._write_logs_batch, logs_to_flush, "logs")
 
     async def _write_with_retry(
         self,
         write_func,
-        records: List[Any],
+        records: list[Any],
         record_type: str,
     ) -> None:
         """
@@ -364,9 +360,7 @@ class BaseExporter(ABC):
                 self._metrics_buffer.clear()
 
         if len(metrics_to_flush) >= self.config.batch_size:
-            await self._write_with_retry(
-                self._write_metrics_batch, metrics_to_flush, "metrics"
-            )
+            await self._write_with_retry(self._write_metrics_batch, metrics_to_flush, "metrics")
 
     async def add_log(self, record: RequestLogRecord) -> None:
         """
@@ -387,9 +381,7 @@ class BaseExporter(ABC):
                 self._logs_buffer.clear()
 
         if len(logs_to_flush) >= self.config.batch_size:
-            await self._write_with_retry(
-                self._write_logs_batch, logs_to_flush, "logs"
-            )
+            await self._write_with_retry(self._write_logs_batch, logs_to_flush, "logs")
 
     @property
     def is_connected(self) -> bool:

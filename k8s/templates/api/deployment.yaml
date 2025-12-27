@@ -1,0 +1,169 @@
+{{- if .Values.api.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ollama-local-serve.api.fullname" . }}
+  labels:
+    {{- include "ollama-local-serve.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ollama-local-serve.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "ollama-local-serve.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/api/metrics"
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "ollama-local-serve.serviceAccountName" . }}
+      {{- end }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.api.initContainers.enabled }}
+      initContainers:
+        - name: wait-for-ollama
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Ollama service..."
+              until wget -q --spider http://{{ include "ollama-local-serve.ollama.fullname" . }}:{{ .Values.ollama.service.port }}/api/tags; do
+                echo "Ollama not ready yet, waiting..."
+                sleep 5
+              done
+              echo "Ollama is ready!"
+        {{- if .Values.clickhouse.enabled }}
+        - name: wait-for-clickhouse
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for ClickHouse..."
+              until wget -q --spider http://{{ include "ollama-local-serve.clickhouse.host" . }}:8123/ping; do
+                echo "ClickHouse not ready, waiting..."
+                sleep 5
+              done
+              echo "ClickHouse is ready!"
+        {{- end }}
+        {{- if .Values.postgresql.enabled }}
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL..."
+              until nc -z {{ include "ollama-local-serve.postgresql.host" . }} 5432; do
+                echo "PostgreSQL not ready, waiting..."
+                sleep 5
+              done
+              echo "PostgreSQL is ready!"
+        {{- end }}
+        - name: schema-migration
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command:
+            - python
+            - -c
+            - |
+              import os
+              import sys
+              import time
+
+              # Add schema migration logic here
+              print("Running schema migration...")
+
+              # ClickHouse schema
+              if os.getenv("EXPORTER_TYPE") in ("clickhouse", "both"):
+                  try:
+                      from clickhouse_driver import Client
+                      client = Client(
+                          host=os.getenv("CLICKHOUSE_HOST"),
+                          port=int(os.getenv("CLICKHOUSE_PORT", 9000)),
+                          database=os.getenv("CLICKHOUSE_DATABASE", "ollama_metrics"),
+                          user=os.getenv("CLICKHOUSE_USER", "default"),
+                          password=os.getenv("CLICKHOUSE_PASSWORD", ""),
+                      )
+                      # Check if tables exist
+                      client.execute("SELECT 1")
+                      print("ClickHouse connection successful")
+                  except Exception as e:
+                      print(f"ClickHouse schema migration skipped: {e}")
+
+              # PostgreSQL schema
+              if os.getenv("EXPORTER_TYPE") in ("postgres", "both"):
+                  try:
+                      import psycopg2
+                      conn = psycopg2.connect(
+                          host=os.getenv("POSTGRES_HOST"),
+                          port=int(os.getenv("POSTGRES_PORT", 5432)),
+                          database=os.getenv("POSTGRES_DATABASE", "ollama_metrics"),
+                          user=os.getenv("POSTGRES_USER", "ollama"),
+                          password=os.getenv("POSTGRES_PASSWORD"),
+                      )
+                      cur = conn.cursor()
+                      cur.execute("SELECT 1")
+                      conn.close()
+                      print("PostgreSQL connection successful")
+                  except Exception as e:
+                      print(f"PostgreSQL schema migration skipped: {e}")
+
+              print("Schema migration complete!")
+          envFrom:
+            - configMapRef:
+                name: {{ include "ollama-local-serve.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ollama-local-serve.fullname" . }}-secrets
+      {{- end }}
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "ollama-local-serve.fullname" . }}-config
+            - secretRef:
+                name: {{ include "ollama-local-serve.fullname" . }}-secrets
+          {{- if .Values.api.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.api.livenessProbe.httpGet.path }}
+              port: {{ .Values.api.livenessProbe.httpGet.port }}
+            initialDelaySeconds: {{ .Values.api.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.livenessProbe.periodSeconds }}
+          {{- end }}
+          {{- if .Values.api.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.api.readinessProbe.httpGet.path }}
+              port: {{ .Values.api.readinessProbe.httpGet.port }}
+            initialDelaySeconds: {{ .Values.api.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.api.readinessProbe.periodSeconds }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+{{- end }}

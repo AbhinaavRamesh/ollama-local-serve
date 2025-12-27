@@ -5,29 +5,27 @@ Exports metrics and request logs to PostgreSQL with optional TimescaleDB
 support for time-series optimization. Uses SQLAlchemy with asyncpg.
 """
 
-import json
 import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, List, Any
 
 from sqlalchemy import (
+    BigInteger,
     Column,
-    String,
+    DateTime,
     Float,
     Integer,
-    DateTime,
+    String,
     Text,
-    BigInteger,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import (
-    create_async_engine,
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
-    AsyncEngine,
+    create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
 
@@ -137,7 +135,7 @@ class PostgresExporter(BaseExporter):
         ```
     """
 
-    def __init__(self, config: Optional[PostgresConfig] = None) -> None:
+    def __init__(self, config: PostgresConfig | None = None) -> None:
         """
         Initialize the PostgreSQL exporter.
 
@@ -146,8 +144,8 @@ class PostgresExporter(BaseExporter):
         """
         self._pg_config = config or PostgresConfig()
         super().__init__(self._pg_config)
-        self._engine: Optional[AsyncEngine] = None
-        self._session_factory: Optional[async_sessionmaker] = None
+        self._engine: AsyncEngine | None = None
+        self._session_factory: async_sessionmaker | None = None
 
         logger.info(
             f"PostgresExporter initialized: {self._pg_config.host}:"
@@ -222,9 +220,7 @@ class PostgresExporter(BaseExporter):
         async with self._engine.connect() as conn:
             try:
                 # Enable TimescaleDB extension
-                await conn.execute(
-                    text("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
-                )
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE"))
                 await conn.commit()
 
                 # Convert metrics table to hypertable
@@ -301,7 +297,7 @@ class PostgresExporter(BaseExporter):
             except Exception as e:
                 logger.warning(f"TimescaleDB setup failed (may not be installed): {e}")
 
-    async def _write_metrics_batch(self, records: List[MetricRecord]) -> None:
+    async def _write_metrics_batch(self, records: list[MetricRecord]) -> None:
         """Write metrics batch to PostgreSQL."""
         if self._session_factory is None:
             raise RuntimeError("Not connected to PostgreSQL")
@@ -334,7 +330,7 @@ class PostgresExporter(BaseExporter):
                 logger.error(f"Failed to write metrics batch: {e}")
                 raise
 
-    async def _write_logs_batch(self, records: List[RequestLogRecord]) -> None:
+    async def _write_logs_batch(self, records: list[RequestLogRecord]) -> None:
         """Write request logs batch to PostgreSQL."""
         if self._session_factory is None:
             raise RuntimeError("Not connected to PostgreSQL")
@@ -347,9 +343,11 @@ class PostgresExporter(BaseExporter):
                 # Create ORM objects
                 db_records = [
                     RequestLogs(
-                        request_id=uuid.UUID(record.request_id)
-                        if isinstance(record.request_id, str)
-                        else record.request_id,
+                        request_id=(
+                            uuid.UUID(record.request_id)
+                            if isinstance(record.request_id, str)
+                            else record.request_id
+                        ),
                         timestamp=record.timestamp,
                         model=record.model,
                         tokens_generated=record.tokens_generated,
@@ -372,12 +370,12 @@ class PostgresExporter(BaseExporter):
 
     async def query_metrics(
         self,
-        metric_name: Optional[str] = None,
-        metric_type: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        metric_name: str | None = None,
+        metric_type: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 1000,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Query metrics from PostgreSQL.
 
@@ -451,13 +449,13 @@ class PostgresExporter(BaseExporter):
 
     async def query_logs(
         self,
-        model: Optional[str] = None,
-        status: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        model: str | None = None,
+        status: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Query request logs from PostgreSQL.
 
@@ -535,7 +533,7 @@ class PostgresExporter(BaseExporter):
         self,
         time_range_hours: int = 1,
         granularity_minutes: int = 1,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Get aggregated statistics over a time range.
 
@@ -593,8 +591,8 @@ class PostgresExporter(BaseExporter):
 
     async def get_logs_count(
         self,
-        model: Optional[str] = None,
-        status: Optional[str] = None,
+        model: str | None = None,
+        status: str | None = None,
     ) -> int:
         """
         Get total count of logs matching filters.

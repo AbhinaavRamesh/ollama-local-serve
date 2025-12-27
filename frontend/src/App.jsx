@@ -6,6 +6,7 @@ import Performance from './pages/Performance';
 import Logs from './pages/Logs';
 import Models from './pages/Models';
 import Settings from './pages/Settings';
+import System from './pages/System';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
       <AnimatePresence mode="wait">
         <Routes>
           <Route path="/" element={<Overview />} />
+          <Route path="/system" element={<System />} />
           <Route path="/performance" element={<Performance />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/models" element={<Models />} />

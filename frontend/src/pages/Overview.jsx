@@ -12,6 +12,10 @@ import { LatencyChart } from '../components/charts/LatencyChart'
 import { StatusIndicator } from '../components/dashboard/StatusIndicator'
 import { PageSkeleton } from '../components/ui/LoadingSkeleton'
 import { ErrorState } from '../components/ui/EmptyState'
+// New enhanced dashboard components
+import { SystemOverview } from '../components/dashboard/SystemOverview'
+import { PerformanceMetrics } from '../components/dashboard/PerformanceMetrics'
+import { InfrastructureHealth } from '../components/dashboard/InfrastructureHealth'
 import { useFetchStats } from '../hooks/useFetchStats'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import { useAppContext } from '../context/AppContext'
@@ -240,6 +244,30 @@ export function Overview() {
           loading={historyLoading}
           slaTarget={500}
         />
+      </div>
+
+      {/* System Overview Section */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+          System Metrics
+        </h2>
+        <SystemOverview refreshInterval={refreshInterval} />
+      </div>
+
+      {/* Performance Metrics Section */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+          Performance Metrics
+        </h2>
+        <PerformanceMetrics refreshInterval={refreshInterval} />
+      </div>
+
+      {/* Infrastructure Health Section */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+          Infrastructure Health
+        </h2>
+        <InfrastructureHealth refreshInterval={refreshInterval * 2} />
       </div>
     </motion.div>
   )

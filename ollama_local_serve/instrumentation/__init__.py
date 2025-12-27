@@ -42,8 +42,8 @@ Example:
 """
 
 from ollama_local_serve.instrumentation.metrics_provider import (
-    MetricsProvider,
     InstrumentationConfig,
+    MetricsProvider,
     RequestTracker,
 )
 from ollama_local_serve.instrumentation.tracer import (

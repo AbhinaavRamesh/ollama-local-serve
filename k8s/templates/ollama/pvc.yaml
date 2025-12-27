@@ -1,0 +1,18 @@
+{{- if and .Values.ollama.enabled .Values.ollama.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ollama-local-serve.ollama.fullname" . }}-pvc
+  labels:
+    {{- include "ollama-local-serve.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+spec:
+  accessModes:
+    - {{ .Values.ollama.persistence.accessMode }}
+  {{- if .Values.ollama.persistence.storageClass }}
+  storageClassName: {{ .Values.ollama.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ollama.persistence.size }}
+{{- end }}

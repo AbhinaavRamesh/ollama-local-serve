@@ -1,0 +1,88 @@
+{{- if .Values.ollama.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ollama-local-serve.ollama.fullname" . }}
+  labels:
+    {{- include "ollama-local-serve.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+spec:
+  replicas: {{ .Values.ollama.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ollama-local-serve.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ollama
+  strategy:
+    type: Recreate  # Required for GPU workloads
+  template:
+    metadata:
+      labels:
+        {{- include "ollama-local-serve.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ollama
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "ollama-local-serve.serviceAccountName" . }}
+      {{- end }}
+      {{- with .Values.ollama.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ollama.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ollama.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
+          imagePullPolicy: {{ .Values.ollama.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 11434
+              protocol: TCP
+          env:
+            - name: OLLAMA_HOST
+              value: "{{ .Values.ollama.env.OLLAMA_HOST }}"
+            - name: OLLAMA_ORIGINS
+              value: "{{ .Values.ollama.env.OLLAMA_ORIGINS }}"
+            {{- if .Values.ollama.env.OLLAMA_MODELS }}
+            - name: OLLAMA_MODELS
+              value: "{{ .Values.ollama.env.OLLAMA_MODELS }}"
+            {{- end }}
+          {{- if .Values.ollama.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.ollama.livenessProbe.httpGet.path }}
+              port: {{ .Values.ollama.livenessProbe.httpGet.port }}
+            initialDelaySeconds: {{ .Values.ollama.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.ollama.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.ollama.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.ollama.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.ollama.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.ollama.readinessProbe.httpGet.path }}
+              port: {{ .Values.ollama.readinessProbe.httpGet.port }}
+            initialDelaySeconds: {{ .Values.ollama.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.ollama.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.ollama.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.ollama.readinessProbe.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+      volumes:
+        - name: ollama-data
+          {{- if .Values.ollama.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "ollama-local-serve.ollama.fullname" . }}-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

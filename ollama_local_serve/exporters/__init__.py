@@ -58,16 +58,16 @@ from ollama_local_serve.exporters.base import (
     BaseExporter,
     ExporterConfig,
     MetricRecord,
-    RequestLogRecord,
     MetricType,
+    RequestLogRecord,
 )
 from ollama_local_serve.exporters.clickhouse_exporter import (
-    ClickHouseExporter,
     ClickHouseConfig,
+    ClickHouseExporter,
 )
 from ollama_local_serve.exporters.postgres_exporter import (
-    PostgresExporter,
     PostgresConfig,
+    PostgresExporter,
 )
 
 __all__ = [

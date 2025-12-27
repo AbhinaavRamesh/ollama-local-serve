@@ -5,13 +5,24 @@ Provides unified interface for querying both ClickHouse and PostgreSQL.
 """
 
 import logging
+import math
 import os
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any, Literal
 from dataclasses import dataclass
-from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_float(value: Any, default: float = 0.0) -> float:
+    """Convert value to float, replacing NaN/Inf with default."""
+    try:
+        f = float(value) if value is not None else default
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (TypeError, ValueError):
+        return default
 
 
 @dataclass
@@ -60,7 +71,7 @@ class DatabaseManager:
     of the underlying database.
     """
 
-    def __init__(self, config: Optional[DatabaseConfig] = None) -> None:
+    def __init__(self, config: DatabaseConfig | None = None) -> None:
         """
         Initialize the database manager.
 
@@ -68,9 +79,9 @@ class DatabaseManager:
             config: Database configuration. Loads from env if None.
         """
         self.config = config or DatabaseConfig.from_env()
-        self._clickhouse_client: Optional[Any] = None
-        self._postgres_engine: Optional[Any] = None
-        self._postgres_session_factory: Optional[Any] = None
+        self._clickhouse_client: Any | None = None
+        self._postgres_engine: Any | None = None
+        self._postgres_session_factory: Any | None = None
         self._connected = False
         self._start_time = datetime.utcnow()
 
@@ -84,9 +95,7 @@ class DatabaseManager:
                 await self._connect_postgres()
 
             self._connected = True
-            logger.info(
-                f"Database connections established (type: {self.config.exporter_type})"
-            )
+            logger.info(f"Database connections established (type: {self.config.exporter_type})")
 
         except Exception as e:
             logger.error(f"Failed to connect to database: {e}")
@@ -116,9 +125,9 @@ class DatabaseManager:
         """Connect to PostgreSQL."""
         try:
             from sqlalchemy.ext.asyncio import (
-                create_async_engine,
                 AsyncSession,
                 async_sessionmaker,
+                create_async_engine,
             )
 
             connection_url = (
@@ -137,6 +146,7 @@ class DatabaseManager:
             # Test connection
             async with self._postgres_engine.connect() as conn:
                 from sqlalchemy import text
+
                 await conn.execute(text("SELECT 1"))
 
             logger.info("Connected to PostgreSQL")
@@ -179,7 +189,7 @@ class DatabaseManager:
     # Query Methods
     # ========================================================================
 
-    async def get_current_stats(self) -> Dict[str, Any]:
+    async def get_current_stats(self) -> dict[str, Any]:
         """Get current metrics snapshot."""
         if self.config.exporter_type in ("clickhouse", "both") and self._clickhouse_client:
             return await self._get_current_stats_clickhouse()
@@ -188,7 +198,7 @@ class DatabaseManager:
         else:
             return self._get_empty_stats()
 
-    async def _get_current_stats_clickhouse(self) -> Dict[str, Any]:
+    async def _get_current_stats_clickhouse(self) -> dict[str, Any]:
         """Get current stats from ClickHouse request_logs table."""
         try:
             # Get totals from request_logs
@@ -220,11 +230,11 @@ class DatabaseManager:
 
             return {
                 "tokens_total": int(totals[0][0] or 0),
-                "tokens_per_sec": float(tps[0][0] or 0),
-                "uptime_hours": self.uptime_seconds / 3600,
+                "tokens_per_sec": _sanitize_float(tps[0][0]),
+                "uptime_hours": _sanitize_float(self.uptime_seconds / 3600),
                 "error_count": int(totals[0][3] or 0),
                 "request_count": int(totals[0][1] or 0),
-                "avg_latency_ms": float(totals[0][2] or 0),
+                "avg_latency_ms": _sanitize_float(totals[0][2]),
                 "models_available": int(models[0][0] or 0),
                 "timestamp": datetime.utcnow(),
             }
@@ -233,49 +243,55 @@ class DatabaseManager:
             logger.error(f"Error getting stats from ClickHouse: {e}")
             return self._get_empty_stats()
 
-    async def _get_current_stats_postgres(self) -> Dict[str, Any]:
+    async def _get_current_stats_postgres(self) -> dict[str, Any]:
         """Get current stats from PostgreSQL request_logs table."""
         try:
             from sqlalchemy import text
 
             async with self._postgres_session_factory() as session:
                 # Get totals from request_logs
-                totals_query = text("""
+                totals_query = text(
+                    """
                     SELECT
                         COALESCE(SUM(tokens_generated), 0) as tokens_total,
                         COUNT(*) as request_count,
                         COALESCE(AVG(latency_ms), 0) as avg_latency_ms,
                         SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count
                     FROM request_logs
-                """)
+                """
+                )
                 result = await session.execute(totals_query)
                 totals = result.fetchone()
 
                 # Get tokens per second (last hour)
-                tps_query = text("""
+                tps_query = text(
+                    """
                     SELECT
                         COALESCE(SUM(tokens_generated), 0) / 3600.0 as tokens_per_sec
                     FROM request_logs
                     WHERE timestamp >= NOW() - INTERVAL '1 hour'
-                """)
+                """
+                )
                 result = await session.execute(tps_query)
                 tps = result.fetchone()
 
                 # Get model count
-                models_query = text("""
+                models_query = text(
+                    """
                     SELECT COUNT(DISTINCT model) as models_count
                     FROM request_logs
-                """)
+                """
+                )
                 result = await session.execute(models_query)
                 models = result.fetchone()
 
                 return {
                     "tokens_total": int(totals[0] or 0),
-                    "tokens_per_sec": float(tps[0] or 0),
-                    "uptime_hours": self.uptime_seconds / 3600,
+                    "tokens_per_sec": _sanitize_float(tps[0]),
+                    "uptime_hours": _sanitize_float(self.uptime_seconds / 3600),
                     "error_count": int(totals[3] or 0),
                     "request_count": int(totals[1] or 0),
-                    "avg_latency_ms": float(totals[2] or 0),
+                    "avg_latency_ms": _sanitize_float(totals[2]),
                     "models_available": int(models[0] or 0),
                     "timestamp": datetime.utcnow(),
                 }
@@ -284,7 +300,7 @@ class DatabaseManager:
             logger.error(f"Error getting stats from PostgreSQL: {e}")
             return self._get_empty_stats()
 
-    def _get_empty_stats(self) -> Dict[str, Any]:
+    def _get_empty_stats(self) -> dict[str, Any]:
         """Return empty stats when no database is available."""
         return {
             "tokens_total": 0,
@@ -301,7 +317,7 @@ class DatabaseManager:
         self,
         time_range: str = "1h",
         granularity: str = "1m",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get time-series history data.
 
@@ -326,7 +342,7 @@ class DatabaseManager:
 
     async def _get_history_clickhouse(
         self, hours: int, granularity_minutes: int
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get history from ClickHouse request_logs table."""
         try:
             query = f"""
@@ -347,8 +363,8 @@ class DatabaseManager:
                 {
                     "timestamp": row[0],
                     "tokens_total": int(row[1] or 0),
-                    "latency_ms": float(row[2] or 0),
-                    "throughput": float(row[3] or 0),
+                    "latency_ms": _sanitize_float(row[2]),
+                    "throughput": _sanitize_float(row[3]),
                     "error_count": int(row[4] or 0),
                 }
                 for row in rows
@@ -360,13 +376,14 @@ class DatabaseManager:
 
     async def _get_history_postgres(
         self, hours: int, granularity_minutes: int
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get history from PostgreSQL request_logs table."""
         try:
             from sqlalchemy import text
 
             async with self._postgres_session_factory() as session:
-                query = text(f"""
+                query = text(
+                    f"""
                     SELECT
                         date_trunc('minute', timestamp) as time_bucket,
                         COALESCE(SUM(tokens_generated), 0) as tokens_total,
@@ -377,7 +394,8 @@ class DatabaseManager:
                     WHERE timestamp >= NOW() - INTERVAL '{hours} hours'
                     GROUP BY time_bucket
                     ORDER BY time_bucket ASC
-                """)
+                """
+                )
                 result = await session.execute(query)
                 rows = result.fetchall()
 
@@ -385,8 +403,8 @@ class DatabaseManager:
                     {
                         "timestamp": row[0],
                         "tokens_total": int(row[1] or 0),
-                        "latency_ms": float(row[2] or 0),
-                        "throughput": float(row[3] or 0),
+                        "latency_ms": _sanitize_float(row[2]),
+                        "throughput": _sanitize_float(row[3]),
                         "error_count": int(row[4] or 0),
                     }
                     for row in rows
@@ -400,9 +418,9 @@ class DatabaseManager:
         self,
         limit: int = 100,
         offset: int = 0,
-        status: Optional[str] = None,
-        model: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        status: str | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
         """
         Get paginated request logs.
 
@@ -423,9 +441,9 @@ class DatabaseManager:
         self,
         limit: int,
         offset: int,
-        status: Optional[str],
-        model: Optional[str],
-    ) -> Dict[str, Any]:
+        status: str | None,
+        model: str | None,
+    ) -> dict[str, Any]:
         """Get logs from ClickHouse."""
         try:
             conditions = []
@@ -491,9 +509,9 @@ class DatabaseManager:
         self,
         limit: int,
         offset: int,
-        status: Optional[str],
-        model: Optional[str],
-    ) -> Dict[str, Any]:
+        status: str | None,
+        model: str | None,
+    ) -> dict[str, Any]:
         """Get logs from PostgreSQL."""
         try:
             from sqlalchemy import text
@@ -512,14 +530,13 @@ class DatabaseManager:
 
             async with self._postgres_session_factory() as session:
                 # Get total count
-                count_query = text(
-                    f"SELECT COUNT(*) FROM request_logs WHERE {where_clause}"
-                )
+                count_query = text(f"SELECT COUNT(*) FROM request_logs WHERE {where_clause}")
                 result = await session.execute(count_query, params)
                 total = result.scalar() or 0
 
                 # Get logs
-                query = text(f"""
+                query = text(
+                    f"""
                     SELECT
                         request_id::text, timestamp, model, tokens_generated,
                         latency_ms, status, error_message
@@ -527,7 +544,8 @@ class DatabaseManager:
                     WHERE {where_clause}
                     ORDER BY timestamp DESC
                     LIMIT :limit OFFSET :offset
-                """)
+                """
+                )
                 result = await session.execute(query, params)
                 rows = result.fetchall()
 
@@ -556,10 +574,10 @@ class DatabaseManager:
 
     async def get_model_repository(
         self,
-        category: Optional[str] = None,
+        category: str | None = None,
         favorites_only: bool = False,
         installed_only: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get models from the repository."""
         if not self._postgres_session_factory:
             return {"models": [], "total": 0, "favorites_count": 0, "installed_count": 0}
@@ -582,7 +600,8 @@ class DatabaseManager:
 
             async with self._postgres_session_factory() as session:
                 # Get models
-                query = text(f"""
+                query = text(
+                    f"""
                     SELECT
                         id, model_name, display_name, description, category,
                         size_label, size_bytes, is_favorite, is_installed, is_default,
@@ -591,7 +610,8 @@ class DatabaseManager:
                     FROM model_repository
                     WHERE {where_clause}
                     ORDER BY is_favorite DESC, usage_count DESC, model_name ASC
-                """)
+                """
+                )
                 result = await session.execute(query, params)
                 rows = result.fetchall()
 
@@ -619,13 +639,15 @@ class DatabaseManager:
                 ]
 
                 # Get counts
-                count_query = text("""
+                count_query = text(
+                    """
                     SELECT
                         COUNT(*) as total,
                         SUM(CASE WHEN is_favorite THEN 1 ELSE 0 END) as favorites,
                         SUM(CASE WHEN is_installed THEN 1 ELSE 0 END) as installed
                     FROM model_repository
-                """)
+                """
+                )
                 count_result = await session.execute(count_query)
                 counts = count_result.fetchone()
 
@@ -640,7 +662,7 @@ class DatabaseManager:
             logger.error(f"Error getting model repository: {e}")
             return {"models": [], "total": 0, "favorites_count": 0, "installed_count": 0}
 
-    async def get_model_by_name(self, model_name: str) -> Optional[Dict[str, Any]]:
+    async def get_model_by_name(self, model_name: str) -> dict[str, Any] | None:
         """Get a single model from repository by name."""
         if not self._postgres_session_factory:
             return None
@@ -649,7 +671,8 @@ class DatabaseManager:
             from sqlalchemy import text
 
             async with self._postgres_session_factory() as session:
-                query = text("""
+                query = text(
+                    """
                     SELECT
                         id, model_name, display_name, description, category,
                         size_label, size_bytes, is_favorite, is_installed, is_default,
@@ -657,7 +680,8 @@ class DatabaseManager:
                         last_used_at, installed_at, created_at, updated_at
                     FROM model_repository
                     WHERE model_name = :model_name
-                """)
+                """
+                )
                 result = await session.execute(query, {"model_name": model_name})
                 row = result.fetchone()
 
@@ -691,11 +715,11 @@ class DatabaseManager:
     async def create_model_entry(
         self,
         model_name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
+        display_name: str | None = None,
+        description: str | None = None,
         category: str = "general",
-        size_label: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        size_label: str | None = None,
+    ) -> dict[str, Any] | None:
         """Create a new model entry in the repository."""
         if not self._postgres_session_factory:
             return None
@@ -704,7 +728,8 @@ class DatabaseManager:
             from sqlalchemy import text
 
             async with self._postgres_session_factory() as session:
-                query = text("""
+                query = text(
+                    """
                     INSERT INTO model_repository (model_name, display_name, description, category, size_label)
                     VALUES (:model_name, :display_name, :description, :category, :size_label)
                     ON CONFLICT (model_name) DO UPDATE SET
@@ -715,14 +740,18 @@ class DatabaseManager:
                         updated_at = NOW()
                     RETURNING id, model_name, display_name, description, category, size_label,
                               is_favorite, is_installed, is_default, usage_count
-                """)
-                result = await session.execute(query, {
-                    "model_name": model_name,
-                    "display_name": display_name or model_name,
-                    "description": description,
-                    "category": category,
-                    "size_label": size_label,
-                })
+                """
+                )
+                result = await session.execute(
+                    query,
+                    {
+                        "model_name": model_name,
+                        "display_name": display_name or model_name,
+                        "description": description,
+                        "category": category,
+                        "size_label": size_label,
+                    },
+                )
                 await session.commit()
                 row = result.fetchone()
 
@@ -748,14 +777,14 @@ class DatabaseManager:
     async def update_model_entry(
         self,
         model_name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        category: Optional[str] = None,
-        is_favorite: Optional[bool] = None,
-        is_default: Optional[bool] = None,
-        is_installed: Optional[bool] = None,
-        size_bytes: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
+        display_name: str | None = None,
+        description: str | None = None,
+        category: str | None = None,
+        is_favorite: bool | None = None,
+        is_default: bool | None = None,
+        is_installed: bool | None = None,
+        size_bytes: int | None = None,
+    ) -> dict[str, Any] | None:
         """Update a model entry in the repository."""
         if not self._postgres_session_factory:
             return None
@@ -785,8 +814,10 @@ class DatabaseManager:
                 if is_default:
                     async with self._postgres_session_factory() as session:
                         await session.execute(
-                            text("UPDATE model_repository SET is_default = FALSE WHERE model_name != :model_name"),
-                            {"model_name": model_name}
+                            text(
+                                "UPDATE model_repository SET is_default = FALSE WHERE model_name != :model_name"
+                            ),
+                            {"model_name": model_name},
                         )
             if is_installed is not None:
                 updates.append("is_installed = :is_installed")
@@ -798,13 +829,15 @@ class DatabaseManager:
                 params["size_bytes"] = size_bytes
 
             async with self._postgres_session_factory() as session:
-                query = text(f"""
+                query = text(
+                    f"""
                     UPDATE model_repository
                     SET {', '.join(updates)}
                     WHERE model_name = :model_name
                     RETURNING id, model_name, display_name, description, category,
                               size_label, is_favorite, is_installed, is_default, usage_count
-                """)
+                """
+                )
                 result = await session.execute(query, params)
                 await session.commit()
                 row = result.fetchone()
@@ -846,7 +879,7 @@ class DatabaseManager:
             logger.error(f"Error deleting model entry: {e}")
             return False
 
-    async def sync_installed_models(self, installed_models: List[str]) -> None:
+    async def sync_installed_models(self, installed_models: list[str]) -> None:
         """Sync the repository with currently installed models."""
         if not self._postgres_session_factory:
             return
@@ -861,15 +894,17 @@ class DatabaseManager:
                 # Mark installed models
                 for model_name in installed_models:
                     await session.execute(
-                        text("""
+                        text(
+                            """
                             INSERT INTO model_repository (model_name, is_installed, installed_at)
                             VALUES (:model_name, TRUE, NOW())
                             ON CONFLICT (model_name) DO UPDATE SET
                                 is_installed = TRUE,
                                 installed_at = COALESCE(model_repository.installed_at, NOW()),
                                 updated_at = NOW()
-                        """),
-                        {"model_name": model_name}
+                        """
+                        ),
+                        {"model_name": model_name},
                     )
 
                 await session.commit()
@@ -896,6 +931,7 @@ class DatabaseManager:
         if self.config.exporter_type in ("postgres", "both") and self._postgres_session_factory:
             try:
                 from sqlalchemy import text
+
                 async with self._postgres_session_factory() as session:
                     await session.execute(text("TRUNCATE TABLE ollama_metrics"))
                     await session.commit()
@@ -921,6 +957,7 @@ class DatabaseManager:
         if self.config.exporter_type in ("postgres", "both") and self._postgres_session_factory:
             try:
                 from sqlalchemy import text
+
                 async with self._postgres_session_factory() as session:
                     await session.execute(text("TRUNCATE TABLE request_logs CASCADE"))
                     await session.commit()
@@ -931,7 +968,7 @@ class DatabaseManager:
 
         return success
 
-    async def clear_all_data(self) -> Dict[str, bool]:
+    async def clear_all_data(self) -> dict[str, bool]:
         """Clear all data from metrics, logs, and reset model stats."""
         results = {
             "metrics_cleared": await self.clear_metrics(),
@@ -947,14 +984,19 @@ class DatabaseManager:
 
         try:
             from sqlalchemy import text
+
             async with self._postgres_session_factory() as session:
-                await session.execute(text("""
+                await session.execute(
+                    text(
+                        """
                     UPDATE model_repository SET
                         usage_count = 0,
                         total_tokens_generated = 0,
                         last_used_at = NULL,
                         updated_at = NOW()
-                """))
+                """
+                    )
+                )
                 await session.commit()
             logger.info("Reset model repository stats")
             return True
@@ -962,7 +1004,7 @@ class DatabaseManager:
             logger.error(f"Error resetting model stats: {e}")
             return False
 
-    async def get_data_summary(self) -> Dict[str, Any]:
+    async def get_data_summary(self) -> dict[str, Any]:
         """Get summary of data in databases."""
         summary = {
             "metrics_count": 0,
@@ -989,6 +1031,7 @@ class DatabaseManager:
         if self.config.exporter_type in ("postgres", "both") and self._postgres_session_factory:
             try:
                 from sqlalchemy import text
+
                 async with self._postgres_session_factory() as session:
                     # Metrics count
                     result = await session.execute(text("SELECT COUNT(*) FROM ollama_metrics"))
@@ -999,9 +1042,9 @@ class DatabaseManager:
                     summary["logs_count"] = result.scalar() or 0
 
                     # Date range
-                    result = await session.execute(text(
-                        "SELECT MIN(timestamp), MAX(timestamp) FROM ollama_metrics"
-                    ))
+                    result = await session.execute(
+                        text("SELECT MIN(timestamp), MAX(timestamp) FROM ollama_metrics")
+                    )
                     dates = result.fetchone()
                     if dates and dates[0]:
                         if not summary["oldest_metric"] or dates[0] < summary["oldest_metric"]:
@@ -1015,7 +1058,7 @@ class DatabaseManager:
 
         return summary
 
-    async def get_model_stats(self) -> List[Dict[str, Any]]:
+    async def get_model_stats(self) -> list[dict[str, Any]]:
         """Get statistics per model."""
         if self.config.exporter_type in ("clickhouse", "both") and self._clickhouse_client:
             return await self._get_model_stats_clickhouse()
@@ -1024,7 +1067,7 @@ class DatabaseManager:
         else:
             return []
 
-    async def _get_model_stats_clickhouse(self) -> List[Dict[str, Any]]:
+    async def _get_model_stats_clickhouse(self) -> list[dict[str, Any]]:
         """Get model stats from ClickHouse."""
         try:
             query = """
@@ -1046,7 +1089,7 @@ class DatabaseManager:
                     "model_name": row[0],
                     "requests_count": row[1],
                     "tokens_generated": row[2],
-                    "avg_latency_ms": float(row[3] or 0),
+                    "avg_latency_ms": _sanitize_float(row[3]),
                     "error_count": row[4],
                     "last_used": row[5],
                 }
@@ -1057,13 +1100,14 @@ class DatabaseManager:
             logger.error(f"Error getting model stats from ClickHouse: {e}")
             return []
 
-    async def _get_model_stats_postgres(self) -> List[Dict[str, Any]]:
+    async def _get_model_stats_postgres(self) -> list[dict[str, Any]]:
         """Get model stats from PostgreSQL."""
         try:
             from sqlalchemy import text
 
             async with self._postgres_session_factory() as session:
-                query = text("""
+                query = text(
+                    """
                     SELECT
                         model,
                         COUNT(*) as requests_count,
@@ -1074,7 +1118,8 @@ class DatabaseManager:
                     FROM request_logs
                     GROUP BY model
                     ORDER BY requests_count DESC
-                """)
+                """
+                )
                 result = await session.execute(query)
                 rows = result.fetchall()
 
@@ -1083,7 +1128,7 @@ class DatabaseManager:
                         "model_name": row[0],
                         "requests_count": row[1],
                         "tokens_generated": row[2],
-                        "avg_latency_ms": float(row[3] or 0),
+                        "avg_latency_ms": _sanitize_float(row[3]),
                         "error_count": row[4],
                         "last_used": row[5],
                     }
@@ -1096,7 +1141,7 @@ class DatabaseManager:
 
 
 # Global database manager instance
-_db_manager: Optional[DatabaseManager] = None
+_db_manager: DatabaseManager | None = None
 
 
 def get_database_manager() -> DatabaseManager:
