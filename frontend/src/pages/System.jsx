@@ -7,8 +7,6 @@ import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { clsx } from 'clsx'
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -28,7 +26,6 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { KPICard } from '../components/dashboard/KPICard'
-import { PageSkeleton } from '../components/ui/LoadingSkeleton'
 import { ErrorState } from '../components/ui/EmptyState'
 import { useFetchStats } from '../hooks/useFetchStats'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'

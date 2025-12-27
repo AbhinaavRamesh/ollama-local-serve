@@ -2,7 +2,7 @@
  * Infrastructure Health panel showing Pod Status, GPU Temps, VRAM/Pod, Errors.
  */
 
-import { useState, useCallback } from 'react'
+import { } from 'react'
 import { clsx } from 'clsx'
 import {
   Server,
@@ -19,7 +19,6 @@ import { useFetchStats } from '../../hooks/useFetchStats'
 import { useAutoRefresh } from '../../hooks/useAutoRefresh'
 import { fetchInfrastructureHealth } from '../../utils/api'
 import { formatNumber, formatRelativeTime } from '../../utils/formatters'
-import { STATUS_COLORS } from '../../utils/constants'
 
 /**
  * Service status indicator.
@@ -203,7 +202,6 @@ export function InfrastructureHealth({ refreshInterval = 10000 }) {
   const services = healthData?.services ?? []
   const gpuAvailable = healthData?.gpu_available ?? false
   const gpuTemp = healthData?.gpu_temperature_celsius ?? 0
-  const gpuUtil = healthData?.gpu_utilization_percent ?? 0
   const vramUsed = healthData?.vram_used_gb ?? 0
   const vramTotal = healthData?.vram_total_gb ?? 0
   const queueDepth = healthData?.queue_depth ?? 0

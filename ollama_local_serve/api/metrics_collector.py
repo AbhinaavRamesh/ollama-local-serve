@@ -108,7 +108,7 @@ class RequestQueue:
     ) -> None:
         """Mark a request as completed."""
         with self._lock:
-            start_time = self._pending.pop(request_id, None)
+            self._pending.pop(request_id, None)
             if is_error:
                 self._total_errors += 1
 

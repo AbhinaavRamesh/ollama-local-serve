@@ -2,7 +2,7 @@
  * System Overview panel showing GPU, VRAM, Queue, and Active Models.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { Cpu, HardDrive, ListOrdered, Box, RefreshCw, AlertCircle, MemoryStick, Activity } from 'lucide-react'
