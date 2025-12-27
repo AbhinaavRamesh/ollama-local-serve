@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
         history = get_system_metrics_history()
         await history.stop_collection()
     except Exception:
-        pass
+        pass  # Ignore errors during shutdown
 
     await close_database()
 
@@ -1112,7 +1112,7 @@ def _register_routes(app: FastAPI) -> None:
                     data = response.json()
                     loaded_models = len(data.get("models", []))
         except Exception:
-            pass
+            pass  # Continue with default value if Ollama is unavailable
 
         return InfrastructureHealthResponse(
             overall_status=overall_status,

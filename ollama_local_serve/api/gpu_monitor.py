@@ -653,7 +653,7 @@ class SystemMetricsHistory:
             try:
                 await self._task
             except asyncio.CancelledError:
-                pass
+                pass  # Expected when cancelling the task
         logger.info("Stopped system metrics history collection")
 
     async def _collection_loop(
@@ -672,7 +672,7 @@ class SystemMetricsHistory:
                     collector = metrics_collector_getter()
                     queue_depth = collector.get_queue_depth()
                 except Exception:
-                    pass
+                    pass  # Metrics collector may not be available yet
 
                 # Create snapshot
                 snapshot = SystemMetricsSnapshot(

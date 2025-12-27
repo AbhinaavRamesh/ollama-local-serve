@@ -2,7 +2,6 @@
  * Performance Metrics panel showing Tokens/Second by model and Latency P50/P95/P99.
  */
 
-import { useState, useCallback } from 'react'
 import { clsx } from 'clsx'
 import {
   BarChart,
