@@ -2,7 +2,6 @@
  * Infrastructure Health panel showing Pod Status, GPU Temps, VRAM/Pod, Errors.
  */
 
-import { } from 'react'
 import { clsx } from 'clsx'
 import {
   Server,
