@@ -1019,7 +1019,7 @@ export function Settings() {
             <span className="font-medium text-slate-900 dark:text-white">
               Ollama Monitor
             </span>{' '}
-            v1.0.0
+            v1.0.1
           </p>
           <p>
             A professional monitoring dashboard for Ollama Local Serve.

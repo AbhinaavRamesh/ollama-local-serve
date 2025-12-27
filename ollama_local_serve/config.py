@@ -6,8 +6,9 @@ instrumentation, database connections, and API server configuration.
 All settings can be loaded from environment variables.
 """
 
-from typing import Optional, Literal, List
-from pydantic import Field, field_validator, computed_field
+from typing import Literal
+
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -203,8 +204,7 @@ class PostgresConfig(BaseSettings):
     def sync_connection_url(self) -> str:
         """Get the sync PostgreSQL connection URL."""
         return (
-            f"postgresql://{self.user}:{self.password}@"
-            f"{self.host}:{self.port}/{self.database}"
+            f"postgresql://{self.user}:{self.password}@" f"{self.host}:{self.port}/{self.database}"
         )
 
 
@@ -240,11 +240,11 @@ class APIConfig(BaseSettings):
     )
     debug: bool = Field(default=False, description="Enable debug mode")
     reload: bool = Field(default=False, description="Enable hot reload")
-    api_key: Optional[str] = Field(default=None, description="API key for auth")
+    api_key: str | None = Field(default=None, description="API key for auth")
 
     @computed_field
     @property
-    def cors_origins_list(self) -> List[str]:
+    def cors_origins_list(self) -> list[str]:
         """Get CORS origins as a list."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 

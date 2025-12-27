@@ -176,4 +176,57 @@ export async function exportLogsCSV(filters = {}) {
   return new Blob([csv], { type: 'text/csv' })
 }
 
+// =============================================================================
+// New Monitoring Endpoints
+// =============================================================================
+
+/**
+ * Fetch GPU metrics.
+ * @returns {Promise<Object>} GPU metrics data
+ */
+export async function fetchGPUMetrics() {
+  const response = await api.get(API_ENDPOINTS.gpu)
+  return response.data
+}
+
+/**
+ * Fetch system CPU/RAM metrics.
+ * @returns {Promise<Object>} System metrics data
+ */
+export async function fetchSystemMetrics() {
+  const response = await api.get(API_ENDPOINTS.system.current)
+  return response.data
+}
+
+/**
+ * Fetch system metrics history for time-series charts.
+ * @param {string} timeRange - Time range: 5m, 15m, 1h, 6h, 24h
+ * @param {number} maxPoints - Maximum data points to return
+ * @returns {Promise<Object>} System metrics history
+ */
+export async function fetchSystemMetricsHistory(timeRange = '1h', maxPoints = 100) {
+  const response = await api.get(API_ENDPOINTS.system.history, {
+    params: { time_range: timeRange, max_points: maxPoints },
+  })
+  return response.data
+}
+
+/**
+ * Fetch enhanced stats with percentiles.
+ * @returns {Promise<Object>} Enhanced stats with latency percentiles
+ */
+export async function fetchEnhancedStats() {
+  const response = await api.get(API_ENDPOINTS.stats.enhanced)
+  return response.data
+}
+
+/**
+ * Fetch infrastructure health.
+ * @returns {Promise<Object>} Infrastructure health status
+ */
+export async function fetchInfrastructureHealth() {
+  const response = await api.get(API_ENDPOINTS.infrastructure)
+  return response.data
+}
+
 export default api

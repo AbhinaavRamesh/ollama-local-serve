@@ -77,9 +77,18 @@ export const API_ENDPOINTS = {
     current: '/stats/current',
     history: '/stats/history',
     logs: '/stats/logs',
+    enhanced: '/stats/enhanced',
   },
   models: '/models',
   config: '/config',
+  // New monitoring endpoints
+  gpu: '/gpu',
+  system: {
+    current: '/system',
+    history: '/system/history',
+  },
+  infrastructure: '/infrastructure',
+  metrics: '/metrics',
 }
 
 // Chart color palette
@@ -111,6 +120,7 @@ export const PAGINATION = {
 // Navigation items
 export const NAV_ITEMS = [
   { path: '/', label: 'Overview', icon: 'LayoutDashboard' },
+  { path: '/system', label: 'System', icon: 'Cpu' },
   { path: '/performance', label: 'Performance', icon: 'Activity' },
   { path: '/logs', label: 'Logs', icon: 'ScrollText' },
   { path: '/models', label: 'Models', icon: 'Box' },

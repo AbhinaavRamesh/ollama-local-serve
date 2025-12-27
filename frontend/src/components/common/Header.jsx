@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   RefreshCw,
+  Cpu,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useThemeContext } from '../../context/ThemeContext'
@@ -29,6 +30,7 @@ const iconMap = {
   ScrollText,
   Box,
   Settings,
+  Cpu,
 }
 
 /**

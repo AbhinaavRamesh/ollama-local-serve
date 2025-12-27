@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ollama-local-serve.fullname" . }}-config
+  labels:
+    {{- include "ollama-local-serve.labels" . | nindent 4 }}
+data:
+  # Ollama configuration
+  OLLAMA_HOST: "http://{{ include "ollama-local-serve.ollama.fullname" . }}:{{ .Values.ollama.service.port }}"
+  OLLAMA_TIMEOUT: "120"
+
+  # Instrumentation
+  ENABLE_INSTRUMENTATION: {{ .Values.api.env.ENABLE_INSTRUMENTATION | default "true" | quote }}
+  EXPORTER_TYPE: {{ .Values.api.env.EXPORTER_TYPE | default "both" | quote }}
+  METRICS_EXPORT_INTERVAL: {{ .Values.api.env.METRICS_EXPORT_INTERVAL | default "5" | quote }}
+  SERVICE_NAME: "ollama-local-serve"
+
+  # ClickHouse - always include for local deployments
+  CLICKHOUSE_HOST: {{ include "ollama-local-serve.clickhouse.host" . | default "clickhouse" | quote }}
+  CLICKHOUSE_PORT: "9000"
+  CLICKHOUSE_DATABASE: {{ .Values.config.clickhouse.database | default "ollama_metrics" | quote }}
+  CLICKHOUSE_USER: "default"
+  CLICKHOUSE_PASSWORD: {{ .Values.config.clickhouse.password | default "clickhouse123" | quote }}
+
+  # PostgreSQL - always include for local deployments
+  POSTGRES_HOST: {{ include "ollama-local-serve.postgresql.host" . | default "postgres" | quote }}
+  POSTGRES_PORT: "5432"
+  POSTGRES_DATABASE: "ollama_metrics"
+  POSTGRES_USER: "ollama"
+  POSTGRES_PASSWORD: {{ .Values.config.postgres.password | default "postgres123" | quote }}
+  USE_TIMESCALE: "false"
+
+  # Logging
+  LOG_LEVEL: {{ .Values.api.env.LOG_LEVEL | default "INFO" | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ollama-local-serve.fullname" . }}-frontend-config
+  labels:
+    {{- include "ollama-local-serve.labels" . | nindent 4 }}
+data:
+  VITE_API_URL: {{ .Values.frontend.env.VITE_API_URL | default "/api" | quote }}

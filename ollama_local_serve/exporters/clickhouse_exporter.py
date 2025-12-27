@@ -9,7 +9,6 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, List, Any
 
 from clickhouse_driver import Client as ClickHouseClient
 from clickhouse_driver.errors import Error as ClickHouseError
@@ -107,7 +106,7 @@ class ClickHouseExporter(BaseExporter):
         ```
     """
 
-    def __init__(self, config: Optional[ClickHouseConfig] = None) -> None:
+    def __init__(self, config: ClickHouseConfig | None = None) -> None:
         """
         Initialize the ClickHouse exporter.
 
@@ -116,7 +115,7 @@ class ClickHouseExporter(BaseExporter):
         """
         self._ch_config = config or ClickHouseConfig()
         super().__init__(self._ch_config)
-        self._client: Optional[ClickHouseClient] = None
+        self._client: ClickHouseClient | None = None
 
         logger.info(
             f"ClickHouseExporter initialized: {self._ch_config.host}:"
@@ -162,9 +161,7 @@ class ClickHouseExporter(BaseExporter):
 
         try:
             # Create database if not exists
-            self._client.execute(
-                f"CREATE DATABASE IF NOT EXISTS {self._ch_config.database}"
-            )
+            self._client.execute(f"CREATE DATABASE IF NOT EXISTS {self._ch_config.database}")
 
             # Create metrics table
             self._client.execute(CREATE_METRICS_TABLE)
@@ -180,7 +177,7 @@ class ClickHouseExporter(BaseExporter):
             logger.error(f"Failed to create tables: {e}")
             raise
 
-    async def _write_metrics_batch(self, records: List[MetricRecord]) -> None:
+    async def _write_metrics_batch(self, records: list[MetricRecord]) -> None:
         """Write metrics batch to ClickHouse."""
         if self._client is None:
             raise RuntimeError("Not connected to ClickHouse")
@@ -217,7 +214,7 @@ class ClickHouseExporter(BaseExporter):
             logger.error(f"Failed to write metrics batch: {e}")
             raise
 
-    async def _write_logs_batch(self, records: List[RequestLogRecord]) -> None:
+    async def _write_logs_batch(self, records: list[RequestLogRecord]) -> None:
         """Write request logs batch to ClickHouse."""
         if self._client is None:
             raise RuntimeError("Not connected to ClickHouse")
@@ -257,12 +254,12 @@ class ClickHouseExporter(BaseExporter):
 
     async def query_metrics(
         self,
-        metric_name: Optional[str] = None,
-        metric_type: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        metric_name: str | None = None,
+        metric_type: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 1000,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Query metrics from ClickHouse.
 
@@ -324,13 +321,13 @@ class ClickHouseExporter(BaseExporter):
 
     async def query_logs(
         self,
-        model: Optional[str] = None,
-        status: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        model: str | None = None,
+        status: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Query request logs from ClickHouse.
 
@@ -396,7 +393,7 @@ class ClickHouseExporter(BaseExporter):
         self,
         time_range_hours: int = 1,
         granularity_minutes: int = 1,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         Get aggregated statistics over a time range.
 

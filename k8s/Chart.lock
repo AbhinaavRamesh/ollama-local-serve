@@ -1,0 +1,9 @@
+dependencies:
+- name: clickhouse
+  repository: https://charts.bitnami.com/bitnami
+  version: 4.6.0
+- name: postgresql
+  repository: https://charts.bitnami.com/bitnami
+  version: 13.4.4
+digest: sha256:6a446994b637eae548ff49f4299b8dd2e18ecba482ebba496eef7e94e3af55a6
+generated: "2025-12-26T18:22:50.467189-08:00"

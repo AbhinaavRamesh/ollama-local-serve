@@ -5,17 +5,18 @@ Provides distributed tracing with automatic span creation for service operations
 like start, stop, health checks, and model inference.
 """
 
-import logging
 import functools
-from typing import Optional, Dict, Any, Callable, TypeVar, ParamSpec
+import logging
+from collections.abc import Callable
 from contextlib import asynccontextmanager, contextmanager
+from typing import Any, ParamSpec, TypeVar
 
 from opentelemetry import trace
+from opentelemetry.context import Context
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-from opentelemetry.trace import Status, StatusCode, Span
-from opentelemetry.context import Context
+from opentelemetry.trace import Span, Status, StatusCode
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class TracerManager:
         ```
     """
 
-    def __init__(self, config: Optional[TracingConfig] = None) -> None:
+    def __init__(self, config: TracingConfig | None = None) -> None:
         """
         Initialize the tracer manager.
 
@@ -82,13 +83,13 @@ class TracerManager:
             config: Tracing configuration. Uses defaults if None.
         """
         self.config = config or TracingConfig()
-        self._tracer: Optional[trace.Tracer] = None
-        self._tracer_provider: Optional[TracerProvider] = None
+        self._tracer: trace.Tracer | None = None
+        self._tracer_provider: TracerProvider | None = None
         self._initialized = False
 
         logger.info(f"TracerManager created with service: {self.config.service_name}")
 
-    def initialize(self, custom_exporter: Optional[Any] = None) -> None:
+    def initialize(self, custom_exporter: Any | None = None) -> None:
         """
         Initialize the tracer provider and create the tracer.
 
@@ -143,8 +144,8 @@ class TracerManager:
     async def start_span_async(
         self,
         name: str,
-        attributes: Optional[Dict[str, Any]] = None,
-        parent_context: Optional[Context] = None,
+        attributes: dict[str, Any] | None = None,
+        parent_context: Context | None = None,
     ):
         """
         Start an async span for an operation.
@@ -182,8 +183,8 @@ class TracerManager:
     def start_span(
         self,
         name: str,
-        attributes: Optional[Dict[str, Any]] = None,
-        parent_context: Optional[Context] = None,
+        attributes: dict[str, Any] | None = None,
+        parent_context: Context | None = None,
     ):
         """
         Start a synchronous span for an operation.
@@ -214,8 +215,8 @@ class TracerManager:
 
     def trace_async(
         self,
-        name: Optional[str] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        name: str | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> Callable[[Callable[P, T]], Callable[P, T]]:
         """
         Decorator for tracing async functions.
@@ -247,8 +248,8 @@ class TracerManager:
 
     def trace_sync(
         self,
-        name: Optional[str] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        name: str | None = None,
+        attributes: dict[str, Any] | None = None,
     ) -> Callable[[Callable[P, T]], Callable[P, T]]:
         """
         Decorator for tracing synchronous functions.
@@ -283,7 +284,7 @@ class TracerManager:
 
         return get_current()
 
-    def inject_context(self, carrier: Dict[str, str]) -> None:
+    def inject_context(self, carrier: dict[str, str]) -> None:
         """
         Inject trace context into a carrier for distributed tracing.
 
@@ -294,7 +295,7 @@ class TracerManager:
 
         inject(carrier)
 
-    def extract_context(self, carrier: Dict[str, str]) -> Context:
+    def extract_context(self, carrier: dict[str, str]) -> Context:
         """
         Extract trace context from a carrier.
 
@@ -323,7 +324,7 @@ class TracerManager:
         """Check if the tracer is initialized."""
         return self._initialized
 
-    def get_tracer(self) -> Optional[trace.Tracer]:
+    def get_tracer(self) -> trace.Tracer | None:
         """Get the underlying OTEL tracer for custom instrumentation."""
         return self._tracer
 
@@ -335,11 +336,11 @@ class _NoOpSpan:
         """No-op set attribute."""
         pass
 
-    def set_attributes(self, attributes: Dict[str, Any]) -> None:
+    def set_attributes(self, attributes: dict[str, Any]) -> None:
         """No-op set attributes."""
         pass
 
-    def add_event(self, name: str, attributes: Optional[Dict[str, Any]] = None) -> None:
+    def add_event(self, name: str, attributes: dict[str, Any] | None = None) -> None:
         """No-op add event."""
         pass
 

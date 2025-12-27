@@ -107,7 +107,10 @@ export function useFetchStats(fetchFn, options = {}) {
   // Initial fetch and refetch on dependency change
   useEffect(() => {
     if (enabled) {
-      fetchData()
+      // Invalidate cache when deps change to force fresh fetch
+      cacheRef.current = null
+      lastFetchTime.current = null
+      fetchData(true)  // Force refetch
     }
 
     return () => {

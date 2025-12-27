@@ -1,0 +1,247 @@
+# =============================================================================
+# Simple Database Deployments for Local Development
+# =============================================================================
+# These are simplified database deployments for local K8s testing
+# For production, use the Bitnami Helm chart dependencies
+
+---
+# PostgreSQL Init Script ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: ollama
+data:
+  init.sql: |
+    -- Enable UUID extension
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    -- Model repository table
+    CREATE TABLE IF NOT EXISTS model_repository (
+        id SERIAL PRIMARY KEY,
+        model_name VARCHAR(255) NOT NULL UNIQUE,
+        display_name VARCHAR(255),
+        description TEXT,
+        category VARCHAR(100) DEFAULT 'general',
+        size_label VARCHAR(50),
+        size_bytes BIGINT DEFAULT 0,
+        is_favorite BOOLEAN DEFAULT FALSE,
+        is_installed BOOLEAN DEFAULT FALSE,
+        is_default BOOLEAN DEFAULT FALSE,
+        download_count INTEGER DEFAULT 0,
+        usage_count INTEGER DEFAULT 0,
+        total_tokens_generated BIGINT DEFAULT 0,
+        last_used_at TIMESTAMPTZ,
+        installed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Request logs table (simplified without TimescaleDB)
+    CREATE TABLE IF NOT EXISTS request_logs (
+        id BIGSERIAL PRIMARY KEY,
+        request_id UUID NOT NULL UNIQUE DEFAULT uuid_generate_v4(),
+        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        model VARCHAR(255) NOT NULL,
+        prompt_text TEXT DEFAULT '',
+        response_text TEXT DEFAULT '',
+        prompt_tokens INTEGER DEFAULT 0,
+        tokens_generated INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER DEFAULT 0,
+        latency_ms INTEGER NOT NULL DEFAULT 0,
+        status VARCHAR(20) NOT NULL DEFAULT 'success',
+        error_message TEXT
+    );
+
+    -- Indexes
+    CREATE INDEX IF NOT EXISTS idx_model_repo_name ON model_repository (model_name);
+    CREATE INDEX IF NOT EXISTS idx_model_repo_installed ON model_repository (is_installed);
+    CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON request_logs (timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_logs_model ON request_logs (model);
+
+    -- Seed default models
+    INSERT INTO model_repository (model_name, display_name, description, category, size_label, is_default) VALUES
+        ('llama3.2:1b', 'Llama 3.2 1B', 'Meta Llama 3.2 - tiny efficient 1B model', 'general', '1B', TRUE),
+        ('llama3.2:3b', 'Llama 3.2 3B', 'Meta Llama 3.2 - compact 3B model', 'general', '3B', FALSE),
+        ('qwen2.5:0.5b', 'Qwen 2.5 0.5B', 'Qwen 2.5 - tiny 0.5B variant', 'general', '0.5B', FALSE),
+        ('qwen2.5:1.5b', 'Qwen 2.5 1.5B', 'Qwen 2.5 - small 1.5B variant', 'general', '1.5B', FALSE),
+        ('gemma3:1b', 'Gemma 3 1B', 'Google Gemma 3 - compact 1B variant', 'general', '1B', FALSE),
+        ('phi3:mini', 'Phi-3 Mini', 'Microsoft Phi-3 Mini - 3.8B', 'general', '3.8B', FALSE),
+        ('mistral', 'Mistral 7B', 'Mistral AI 7B v0.3 with tool support', 'general', '7B', FALSE),
+        ('deepseek-r1:1.5b', 'DeepSeek R1 1.5B', 'DeepSeek R1 - tiny reasoning model', 'reasoning', '1.5B', FALSE)
+    ON CONFLICT (model_name) DO NOTHING;
+
+---
+# ClickHouse Init Script ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-init
+  namespace: ollama
+data:
+  init.sql: |
+    CREATE DATABASE IF NOT EXISTS ollama_metrics;
+
+    CREATE TABLE IF NOT EXISTS ollama_metrics.ollama_metrics (
+        id UUID DEFAULT generateUUIDv4(),
+        timestamp DateTime64(3) DEFAULT now64(),
+        service_name String,
+        metric_type String,
+        metric_name String,
+        metric_value Float64,
+        metric_metadata String DEFAULT '{}'
+    ) ENGINE = MergeTree()
+    ORDER BY (timestamp, service_name, metric_name)
+    PARTITION BY toYYYYMM(timestamp);
+
+    CREATE TABLE IF NOT EXISTS ollama_metrics.request_logs (
+        id UUID DEFAULT generateUUIDv4(),
+        request_id String DEFAULT toString(generateUUIDv4()),
+        timestamp DateTime64(3) DEFAULT now64(),
+        model String,
+        prompt_text String DEFAULT '',
+        response_text String DEFAULT '',
+        prompt_tokens UInt32 DEFAULT 0,
+        tokens_generated UInt32 DEFAULT 0,
+        total_tokens UInt32 DEFAULT 0,
+        latency_ms UInt32 DEFAULT 0,
+        status String DEFAULT 'success',
+        error_message String DEFAULT '',
+        client_ip String DEFAULT '',
+        user_agent String DEFAULT '',
+        origin String DEFAULT '',
+        referer String DEFAULT ''
+    ) ENGINE = MergeTree()
+    ORDER BY (timestamp, model)
+    PARTITION BY toYYYYMM(timestamp);
+
+---
+# PostgreSQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: ollama
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "ollama"
+            - name: POSTGRES_PASSWORD
+              value: "postgres123"
+            - name: POSTGRES_DB
+              value: "ollama_metrics"
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: postgres-data
+          emptyDir: {}
+        - name: init-script
+          configMap:
+            name: postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: ollama
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+# ClickHouse Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse
+  namespace: ollama
+  labels:
+    app: clickhouse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clickhouse
+  template:
+    metadata:
+      labels:
+        app: clickhouse
+    spec:
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:latest
+          ports:
+            - containerPort: 8123
+              name: http
+            - containerPort: 9000
+              name: native
+          env:
+            - name: CLICKHOUSE_USER
+              value: "default"
+            - name: CLICKHOUSE_PASSWORD
+              value: "clickhouse123"
+            - name: CLICKHOUSE_DB
+              value: "ollama_metrics"
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: clickhouse-data
+              mountPath: /var/lib/clickhouse
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: clickhouse-data
+          emptyDir: {}
+        - name: init-script
+          configMap:
+            name: clickhouse-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: ollama
+spec:
+  selector:
+    app: clickhouse
+  ports:
+    - port: 8123
+      targetPort: 8123
+      name: http
+    - port: 9000
+      targetPort: 9000
+      name: native

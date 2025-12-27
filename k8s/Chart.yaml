@@ -1,0 +1,31 @@
+apiVersion: v2
+name: ollama-local-serve
+description: A Helm chart for deploying Ollama Local Serve with monitoring dashboard
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+keywords:
+  - ollama
+  - llm
+  - ai
+  - monitoring
+  - gpu
+
+home: https://github.com/AbhinaavRamesh/ollama-local-serve
+sources:
+  - https://github.com/AbhinaavRamesh/ollama-local-serve
+
+maintainers:
+  - name: Abhinaav Ramesh
+    url: https://github.com/AbhinaavRamesh
+
+dependencies:
+  - name: clickhouse
+    version: "4.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: clickhouse.enabled
+  - name: postgresql
+    version: "13.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

@@ -2,8 +2,8 @@
 LangChain integration for Ollama Local Serve.
 """
 
-from typing import Optional, Dict, Any
 import logging
+from typing import Any
 
 from ollama_local_serve.config import NetworkConfig
 from ollama_local_serve.exceptions import ConnectionError
@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def create_langchain_client(
-    base_url: Optional[str] = None,
-    config: Optional[NetworkConfig] = None,
+    base_url: str | None = None,
+    config: NetworkConfig | None = None,
     model: str = "llama2",
     **kwargs: Any,
 ) -> Any:
@@ -86,8 +86,8 @@ def create_langchain_client(
 
 
 def create_langchain_chat_client(
-    base_url: Optional[str] = None,
-    config: Optional[NetworkConfig] = None,
+    base_url: str | None = None,
+    config: NetworkConfig | None = None,
     model: str = "llama2",
     **kwargs: Any,
 ) -> Any:
@@ -146,9 +146,7 @@ def create_langchain_chat_client(
             config = NetworkConfig()
         base_url = config.get_connection_url(localhost_fallback=True)
 
-    logger.info(
-        f"Creating LangChain ChatOllama client for {base_url} with model {model}"
-    )
+    logger.info(f"Creating LangChain ChatOllama client for {base_url} with model {model}")
 
     try:
         # Create the ChatOllama client

@@ -1,0 +1,94 @@
+# =============================================================================
+# Local Docker Desktop Development Values
+# =============================================================================
+# Override values for local Kubernetes deployment
+
+global:
+  namespace: ollama
+
+# Ollama - disable GPU for local dev (Mac doesn't expose GPU to K8s)
+ollama:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ollama/ollama
+    tag: latest
+    pullPolicy: IfNotPresent
+  # Resources WITHOUT GPU - critical for Docker Desktop
+  resources:
+    limits:
+      memory: "8Gi"
+      cpu: "4"
+      nvidia.com/gpu: null  # Explicitly remove GPU request
+    requests:
+      memory: "4Gi"
+      cpu: "2"
+  gpu:
+    enabled: false  # Disable GPU for local Docker Desktop
+  persistence:
+    enabled: true  # Keep models across restarts
+    size: 20Gi
+  env:
+    OLLAMA_HOST: "0.0.0.0"
+    OLLAMA_ORIGINS: "*"
+
+# API Monitor - use local image
+api:
+  enabled: true
+  replicaCount: 1  # Single replica for local dev
+  image:
+    repository: ollama-monitor
+    tag: latest
+    pullPolicy: Never  # Use local image
+  service:
+    type: NodePort
+    port: 8000
+    nodePort: 30800  # Access via localhost:30800
+  resources:
+    limits:
+      memory: "512Mi"
+      cpu: "1"
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+  env:
+    EXPORTER_TYPE: "both"  # Use both ClickHouse and PostgreSQL
+
+# Frontend - use local image
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ollama-frontend
+    tag: latest
+    pullPolicy: Never  # Use local image
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 30080  # Access via localhost:30080
+  resources:
+    limits:
+      memory: "128Mi"
+      cpu: "500m"
+    requests:
+      memory: "64Mi"
+      cpu: "100m"
+
+# Ingress - use NodePort for local access
+ingress:
+  enabled: false  # Disable ingress, use NodePort instead
+
+# Databases - DISABLED for local dev (use simple kubectl apply instead)
+# The Bitnami charts have complex dependencies, we'll deploy simple containers separately
+clickhouse:
+  enabled: false
+
+postgresql:
+  enabled: false
+
+# Monitoring - disable ServiceMonitor until Prometheus Operator is installed
+monitoring:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 15s
