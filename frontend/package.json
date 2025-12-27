@@ -1,6 +1,6 @@
 {
   "name": "ollama-monitor-dashboard",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Professional monitoring dashboard for Ollama Local Serve",
   "type": "module",
   "scripts": {
