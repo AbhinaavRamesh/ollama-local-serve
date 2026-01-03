@@ -520,18 +520,24 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.post(
         "/api/chat",
-        tags=["Chat"],
+        tags=["Chat", "Ollama Proxy"],
         summary="Chat with Ollama (streaming)",
-        description="Send a prompt to Ollama and receive a streaming response.",
+        description="Supports both Ollama native format (messages array) and simple prompt format.",
     )
-    async def chat_stream(chat_request: ChatRequest, request: Request):
-        """Stream chat response from Ollama."""
+    async def chat_stream(request: Request):
+        """
+        Stream chat response from Ollama.
+
+        Supports two formats:
+        1. Ollama native: {"model": "...", "messages": [{"role": "user", "content": "..."}]}
+        2. Simple prompt: {"model": "...", "prompt": "..."}
+        """
+        body = await request.json()
         request_id = str(uuid.uuid4())
         start_time = time.time()
 
         # Extract client info
         client_ip = request.client.host if request.client else ""
-        # Check for forwarded IP (behind proxy)
         forwarded = request.headers.get("X-Forwarded-For", "")
         if forwarded:
             client_ip = forwarded.split(",")[0].strip()
@@ -539,24 +545,82 @@ def _register_routes(app: FastAPI) -> None:
         origin = request.headers.get("Origin", "")
         referer = request.headers.get("Referer", "")
 
-        async def generate() -> AsyncGenerator[str, None]:
-            full_response = ""
-            prompt_tokens = 0
-            completion_tokens = 0
-            error_occurred = False
-            error_message = None
+        # Detect format: Ollama native (messages) vs simple (prompt)
+        is_ollama_native = "messages" in body
+        model = body.get("model", "")
+        stream = body.get("stream", True)
+
+        # Extract prompt for logging
+        if is_ollama_native:
+            messages = body.get("messages", [])
+            # Get last user message for logging
+            prompt_for_log = ""
+            for msg in reversed(messages):
+                if msg.get("role") == "user":
+                    prompt_for_log = msg.get("content", "")
+                    break
+        else:
+            prompt_for_log = body.get("prompt", "")
+
+        full_response = ""
+        prompt_tokens = 0
+        completion_tokens = 0
+        error_occurred = False
+        error_message = ""
+
+        async def generate_ollama_native():
+            """Handle Ollama native /api/chat format."""
+            nonlocal full_response, prompt_tokens, completion_tokens, error_occurred, error_message
+
+            try:
+                async with httpx.AsyncClient(timeout=None) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{OLLAMA_HOST}/api/chat",
+                        json=body,
+                    ) as response:
+                        response.raise_for_status()
+
+                        async for line in response.aiter_lines():
+                            if line:
+                                try:
+                                    data = json.loads(line)
+
+                                    # Extract content from message
+                                    if "message" in data:
+                                        content = data["message"].get("content", "")
+                                        full_response += content
+
+                                    if data.get("done"):
+                                        prompt_tokens = data.get("prompt_eval_count", 0)
+                                        completion_tokens = data.get("eval_count", 0)
+
+                                    # Forward original Ollama response
+                                    yield line + "\n"
+
+                                except json.JSONDecodeError:
+                                    yield line + "\n"
+
+            except Exception as e:
+                error_occurred = True
+                error_message = str(e)
+                yield json.dumps({"error": error_message}) + "\n"
+
+        async def generate_simple():
+            """Handle simple prompt format (legacy)."""
+            nonlocal full_response, prompt_tokens, completion_tokens, error_occurred, error_message
 
             try:
                 async with httpx.AsyncClient(timeout=300.0) as client:
                     ollama_request = {
-                        "model": chat_request.model,
-                        "prompt": chat_request.prompt,
+                        "model": model,
+                        "prompt": body.get("prompt", ""),
                         "stream": True,
                     }
-                    if chat_request.system:
-                        ollama_request["system"] = chat_request.system
-                    if chat_request.temperature is not None:
-                        ollama_request["options"] = {"temperature": chat_request.temperature}
+                    if body.get("system"):
+                        ollama_request["system"] = body["system"]
+                    if body.get("temperature") is not None:
+                        ollama_request["options"] = {"temperature": body["temperature"]}
 
                     async with client.stream(
                         "POST",
@@ -570,61 +634,109 @@ def _register_routes(app: FastAPI) -> None:
                                 try:
                                     data = json.loads(line)
 
-                                    # Extract token from response
                                     if "response" in data:
                                         token = data["response"]
                                         full_response += token
-                                        # Send token as SSE event
                                         yield f"data: {json.dumps({'token': token, 'request_id': request_id})}\n\n"
 
-                                    # Check if done
                                     if data.get("done"):
                                         prompt_tokens = data.get("prompt_eval_count", 0)
                                         completion_tokens = data.get("eval_count", 0)
-
-                                        # Send final stats
                                         latency_ms = int((time.time() - start_time) * 1000)
                                         yield f"data: {json.dumps({'done': True, 'request_id': request_id, 'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'latency_ms': latency_ms})}\n\n"
 
                                 except json.JSONDecodeError:
                                     continue
 
-            except httpx.HTTPStatusError as e:
-                error_occurred = True
-                error_message = str(e)
-                yield f"data: {json.dumps({'error': error_message, 'request_id': request_id})}\n\n"
             except Exception as e:
                 error_occurred = True
                 error_message = str(e)
                 yield f"data: {json.dumps({'error': error_message, 'request_id': request_id})}\n\n"
-            finally:
-                # Log the request
-                latency_ms = int((time.time() - start_time) * 1000)
-                await log_chat_request(
-                    request_id=request_id,
-                    model=chat_request.model,
-                    prompt=chat_request.prompt,
-                    response=full_response,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    latency_ms=latency_ms,
-                    status="error" if error_occurred else "success",
-                    error_message=error_message,
-                    client_ip=client_ip,
-                    user_agent=user_agent,
-                    origin=origin,
-                    referer=referer,
-                )
 
-        return StreamingResponse(
-            generate(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Request-ID": request_id,
-            },
-        )
+        async def generate_with_logging(inner_gen):
+            """Wrapper that ensures logging happens after stream completes."""
+            nonlocal full_response, prompt_tokens, completion_tokens, error_occurred, error_message
+            try:
+                async for chunk in inner_gen:
+                    yield chunk
+            finally:
+                latency_ms = int((time.time() - start_time) * 1000)
+                try:
+                    await log_chat_request(
+                        request_id=request_id,
+                        model=model,
+                        prompt=prompt_for_log,
+                        response=full_response,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        latency_ms=latency_ms,
+                        status="error" if error_occurred else "success",
+                        error_message=error_message,
+                        client_ip=client_ip,
+                        user_agent=user_agent,
+                        origin=origin,
+                        referer=referer,
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to log request: {log_err}")
+
+        if is_ollama_native:
+            # Ollama native format - proxy to /api/chat
+            if stream:
+                return StreamingResponse(
+                    generate_with_logging(generate_ollama_native()),
+                    media_type="application/x-ndjson",
+                    headers={"X-Request-ID": request_id},
+                )
+            else:
+                # Non-streaming
+                try:
+                    async with httpx.AsyncClient(timeout=None) as client:
+                        response = await client.post(
+                            f"{OLLAMA_HOST}/api/chat",
+                            json=body,
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+
+                        # Extract response for logging
+                        if "message" in result:
+                            full_response = result["message"].get("content", "")
+                        prompt_tokens = result.get("prompt_eval_count", 0)
+                        completion_tokens = result.get("eval_count", 0)
+
+                        # Log
+                        latency_ms = int((time.time() - start_time) * 1000)
+                        await log_chat_request(
+                            request_id=request_id,
+                            model=model,
+                            prompt=prompt_for_log,
+                            response=full_response,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            latency_ms=latency_ms,
+                            status="success",
+                            error_message="",
+                            client_ip=client_ip,
+                            user_agent=user_agent,
+                            origin=origin,
+                            referer=referer,
+                        )
+
+                        return result
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=str(e))
+        else:
+            # Simple prompt format (legacy dashboard format)
+            return StreamingResponse(
+                generate_with_logging(generate_simple()),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Request-ID": request_id,
+                },
+            )
 
     @app.get(
         "/api/ollama/models",
@@ -677,6 +789,209 @@ def _register_routes(app: FastAPI) -> None:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
+
+    # ========================================================================
+    # Ollama-Compatible Proxy Endpoints (for direct Ollama API compatibility)
+    # ========================================================================
+
+    @app.post(
+        "/api/generate",
+        tags=["Ollama Proxy"],
+        summary="Ollama-compatible generate endpoint",
+        description="Proxy to Ollama's /api/generate with request logging.",
+    )
+    async def ollama_generate_proxy(request: Request):
+        """Ollama-compatible generate endpoint with logging."""
+        body = await request.json()
+        request_id = str(uuid.uuid4())
+        start_time = time.time()
+
+        # Extract client info
+        client_ip = request.client.host if request.client else "unknown"
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            client_ip = forwarded.split(",")[0].strip()
+        user_agent = request.headers.get("User-Agent", "")
+        origin = request.headers.get("Origin", "")
+        referer = request.headers.get("Referer", "")
+
+        model = body.get("model", "")
+        prompt = body.get("prompt", "")
+        stream = body.get("stream", True)
+
+        full_response = ""
+        prompt_tokens = 0
+        completion_tokens = 0
+        error_occurred = False
+        error_message = ""
+
+        async def generate():
+            nonlocal full_response, prompt_tokens, completion_tokens, error_occurred, error_message
+
+            try:
+                async with httpx.AsyncClient(timeout=None) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{OLLAMA_HOST}/api/generate",
+                        json=body,
+                    ) as response:
+                        response.raise_for_status()
+
+                        async for line in response.aiter_lines():
+                            if line:
+                                try:
+                                    data = json.loads(line)
+
+                                    if "response" in data:
+                                        full_response += data["response"]
+
+                                    if data.get("done"):
+                                        prompt_tokens = data.get("prompt_eval_count", 0)
+                                        completion_tokens = data.get("eval_count", 0)
+
+                                    # Forward the original response
+                                    yield line + "\n"
+
+                                except json.JSONDecodeError:
+                                    yield line + "\n"
+
+            except Exception as e:
+                error_occurred = True
+                error_message = str(e)
+                yield json.dumps({"error": error_message}) + "\n"
+
+        async def generate_with_logging():
+            """Wrapper that ensures logging happens after stream completes."""
+            nonlocal full_response, prompt_tokens, completion_tokens, error_occurred, error_message
+            try:
+                async for chunk in generate():
+                    yield chunk
+            finally:
+                # Log the request after stream completes
+                latency_ms = int((time.time() - start_time) * 1000)
+                try:
+                    await log_chat_request(
+                        request_id=request_id,
+                        model=model,
+                        prompt=prompt,
+                        response=full_response,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        latency_ms=latency_ms,
+                        status="error" if error_occurred else "success",
+                        error_message=error_message,
+                        client_ip=client_ip,
+                        user_agent=user_agent,
+                        origin=origin,
+                        referer=referer,
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to log request: {log_err}")
+
+        if stream:
+            return StreamingResponse(
+                generate_with_logging(),
+                media_type="application/x-ndjson",
+                headers={"X-Request-ID": request_id},
+            )
+        else:
+            # Non-streaming: collect full response
+            try:
+                async with httpx.AsyncClient(timeout=None) as client:
+                    response = await client.post(
+                        f"{OLLAMA_HOST}/api/generate",
+                        json=body,
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+
+                    # Log the request
+                    latency_ms = int((time.time() - start_time) * 1000)
+                    await log_chat_request(
+                        request_id=request_id,
+                        model=model,
+                        prompt=prompt,
+                        response=result.get("response", ""),
+                        prompt_tokens=result.get("prompt_eval_count", 0),
+                        completion_tokens=result.get("eval_count", 0),
+                        latency_ms=latency_ms,
+                        status="success",
+                        error_message="",
+                        client_ip=client_ip,
+                        user_agent=user_agent,
+                        origin=origin,
+                        referer=referer,
+                    )
+
+                    return result
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get(
+        "/api/tags",
+        tags=["Ollama Proxy"],
+        summary="Ollama-compatible tags endpoint",
+        description="Proxy to Ollama's /api/tags for model listing.",
+    )
+    async def ollama_tags_proxy():
+        """Ollama-compatible tags endpoint."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(f"{OLLAMA_HOST}/api/tags")
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post(
+        "/api/pull",
+        tags=["Ollama Proxy"],
+        summary="Ollama-compatible pull endpoint",
+        description="Proxy to Ollama's /api/pull for model downloading.",
+    )
+    async def ollama_pull_proxy(request: Request):
+        """Ollama-compatible pull endpoint."""
+        body = await request.json()
+
+        async def generate():
+            try:
+                async with httpx.AsyncClient(timeout=None) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{OLLAMA_HOST}/api/pull",
+                        json=body,
+                    ) as response:
+                        response.raise_for_status()
+                        async for line in response.aiter_lines():
+                            if line:
+                                yield line + "\n"
+            except Exception as e:
+                yield json.dumps({"error": str(e)}) + "\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="application/x-ndjson",
+        )
+
+    @app.delete(
+        "/api/delete",
+        tags=["Ollama Proxy"],
+        summary="Ollama-compatible delete endpoint",
+        description="Proxy to Ollama's /api/delete for model removal.",
+    )
+    async def ollama_delete_proxy(request: Request):
+        """Ollama-compatible delete endpoint."""
+        body = await request.json()
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.delete(
+                    f"{OLLAMA_HOST}/api/delete",
+                    json=body,
+                )
+                response.raise_for_status()
+                return {"status": "deleted"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
     @app.delete(
         "/api/ollama/models/{model_name:path}",
