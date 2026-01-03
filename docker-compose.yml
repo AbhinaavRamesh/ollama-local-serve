@@ -11,18 +11,24 @@ services:
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
-    ports:
-      - "11434:11434"
+    # Port 11434 exposed through ollama-monitor for request logging
+    # No external port - access via ollama-monitor proxy
     volumes:
-      - ollama_data:/root/.ollama
+      # Mount WSL local Ollama models to share with Docker
+      - /usr/share/ollama/.ollama:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_ORIGINS=*
     deploy:
       resources:
         limits:
-          memory: ${OLLAMA_MEMORY_LIMIT:-8g}
-          cpus: '${OLLAMA_CPU_LIMIT:-4.0}'
+          memory: ${OLLAMA_MEMORY_LIMIT:-16g}
+          cpus: '${OLLAMA_CPU_LIMIT:-8.0}'
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
@@ -31,14 +37,6 @@ services:
       start_period: 60s
     networks:
       - ollama-network
-    # Uncomment for GPU support (NVIDIA)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
 
   # ---------------------------------------------------------------------------
   # ClickHouse - Time-series Database
@@ -119,6 +117,7 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+      - "11434:8000"  # Ollama-compatible API with request logging
     environment:
       # Ollama connection
       - OLLAMA_HOST=http://ollama:11434
@@ -156,6 +155,11 @@ services:
         limits:
           memory: ${API_MEMORY_LIMIT:-512m}
           cpus: '${API_CPU_LIMIT:-1.0}'
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
