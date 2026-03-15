@@ -19,7 +19,7 @@ from ollama_local_serve.exceptions import (
 )
 from ollama_local_serve.service import OllamaService
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __all__ = [
     "OllamaService",
     "NetworkConfig",
