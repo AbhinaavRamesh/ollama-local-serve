@@ -204,6 +204,24 @@ def _register_routes(app: FastAPI) -> None:
 
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 
+    # Initialize smart model router
+    _model_router = None
+    try:
+        from ollama_local_serve.router import ModelRouter, RouterConfig
+
+        _router_config = RouterConfig()
+        _router_config = _router_config.load_from_yaml()
+        if _router_config.enabled:
+            _model_router = ModelRouter(_router_config, ollama_host=OLLAMA_HOST)
+            logger.info(
+                f"Smart model router enabled with {len(_router_config.rules)} rules, "
+                f"strategy={_router_config.strategy}"
+            )
+        else:
+            logger.info("Smart model router disabled (set ROUTER_ENABLED=true to enable)")
+    except Exception as e:
+        logger.warning(f"Failed to initialize model router: {e}")
+
     @app.get(
         "/api/stats/current",
         response_model=CurrentStatsResponse,
@@ -550,6 +568,28 @@ def _register_routes(app: FastAPI) -> None:
         model = body.get("model", "")
         stream = body.get("stream", True)
 
+        # Smart routing: if model is "auto" or empty and router is enabled, route automatically
+        route_decision = None
+        if _model_router and (not model or model.lower() == "auto"):
+            # Extract prompt text for routing
+            route_prompt = ""
+            if is_ollama_native:
+                for msg in reversed(body.get("messages", [])):
+                    if msg.get("role") == "user":
+                        route_prompt = msg.get("content", "")
+                        break
+            else:
+                route_prompt = body.get("prompt", "")
+
+            route_decision = await _model_router.route(route_prompt, model or None)
+            model = route_decision.model
+            body["model"] = model
+            logger.info(
+                f"Router selected model={model} "
+                f"task_type={route_decision.task_type} "
+                f"reason={route_decision.reason}"
+            )
+
         # Extract prompt for logging
         if is_ollama_native:
             messages = body.get("messages", [])
@@ -789,6 +829,351 @@ def _register_routes(app: FastAPI) -> None:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
+
+    # ========================================================================
+    # Structured Output & Tool Calling Endpoints
+    # ========================================================================
+
+    @app.post(
+        "/api/chat/structured",
+        tags=["Structured Output"],
+        summary="Chat with structured output",
+        description="Chat with JSON Schema enforcement on the response.",
+    )
+    async def chat_structured(request: Request):
+        """Chat with structured JSON output using Ollama's format parameter."""
+        body = await request.json()
+        request_id = str(uuid.uuid4())
+        start_time = time.time()
+
+        model = body.get("model", "")
+        messages = body.get("messages", [])
+        schema = body.get("format", {})
+        options = body.get("options")
+
+        if not model:
+            raise HTTPException(status_code=400, detail="model is required")
+        if not messages:
+            raise HTTPException(status_code=400, detail="messages is required")
+        if not schema:
+            raise HTTPException(status_code=400, detail="format (JSON Schema) is required")
+
+        # Extract prompt for logging
+        prompt_for_log = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                prompt_for_log = msg.get("content", "")
+                break
+
+        try:
+            # Build Ollama request with format parameter
+            ollama_request = {
+                "model": model,
+                "messages": messages,
+                "format": schema,
+                "stream": False,
+            }
+            if options:
+                ollama_request["options"] = options
+
+            async with httpx.AsyncClient(timeout=None) as client:
+                response = await client.post(
+                    f"{OLLAMA_HOST}/api/chat",
+                    json=ollama_request,
+                )
+                response.raise_for_status()
+                result = response.json()
+
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            # Parse the structured response
+            message_content = result.get("message", {}).get("content", "")
+            prompt_tokens = result.get("prompt_eval_count", 0)
+            completion_tokens = result.get("eval_count", 0)
+
+            # Parse JSON response
+            try:
+                parsed_response = json.loads(message_content)
+            except json.JSONDecodeError:
+                parsed_response = {"raw": message_content}
+
+            # Validate against schema
+            from ollama_local_serve.api.structured import (
+                get_structured_tracker,
+                validate_against_schema,
+            )
+
+            validation = validate_against_schema(parsed_response, schema)
+
+            # Track stats
+            tracker = get_structured_tracker()
+            tracker.record_structured_output(
+                model=model,
+                schema_valid=validation.valid,
+                latency_ms=latency_ms,
+            )
+
+            # Log to database
+            await log_chat_request(
+                request_id=request_id,
+                model=model,
+                prompt=prompt_for_log,
+                response=message_content,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=latency_ms,
+                status="success",
+            )
+
+            return {
+                "request_id": request_id,
+                "model": model,
+                "response": parsed_response,
+                "schema_valid": validation.valid,
+                "validation_errors": validation.errors,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "latency_ms": latency_ms,
+            }
+
+        except httpx.HTTPStatusError as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            await log_chat_request(
+                request_id=request_id,
+                model=model,
+                prompt=prompt_for_log,
+                response="",
+                prompt_tokens=0,
+                completion_tokens=0,
+                latency_ms=latency_ms,
+                status="error",
+                error_message=str(e),
+            )
+            raise HTTPException(status_code=e.response.status_code, detail=str(e))
+        except Exception as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            await log_chat_request(
+                request_id=request_id,
+                model=model,
+                prompt=prompt_for_log,
+                response="",
+                prompt_tokens=0,
+                completion_tokens=0,
+                latency_ms=latency_ms,
+                status="error",
+                error_message=str(e),
+            )
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post(
+        "/api/chat/tools",
+        tags=["Structured Output"],
+        summary="Chat with tool calling",
+        description="Chat with tool definitions for function calling.",
+    )
+    async def chat_tools(request: Request):
+        """Chat with tool calling support using Ollama's tools parameter."""
+        body = await request.json()
+        request_id = str(uuid.uuid4())
+        start_time = time.time()
+
+        model = body.get("model", "")
+        messages = body.get("messages", [])
+        tools = body.get("tools", [])
+        options = body.get("options")
+
+        if not model:
+            raise HTTPException(status_code=400, detail="model is required")
+        if not messages:
+            raise HTTPException(status_code=400, detail="messages is required")
+        if not tools:
+            raise HTTPException(status_code=400, detail="tools is required")
+
+        # Extract prompt for logging
+        prompt_for_log = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                prompt_for_log = msg.get("content", "")
+                break
+
+        try:
+            # Build Ollama request with tools parameter
+            ollama_request = {
+                "model": model,
+                "messages": messages,
+                "tools": tools,
+                "stream": False,
+            }
+            if options:
+                ollama_request["options"] = options
+
+            async with httpx.AsyncClient(timeout=None) as client:
+                response = await client.post(
+                    f"{OLLAMA_HOST}/api/chat",
+                    json=ollama_request,
+                )
+                response.raise_for_status()
+                result = response.json()
+
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            prompt_tokens = result.get("prompt_eval_count", 0)
+            completion_tokens = result.get("eval_count", 0)
+            message = result.get("message", {})
+            content = message.get("content", "")
+
+            # Extract tool calls
+            from ollama_local_serve.api.structured import (
+                extract_tool_calls,
+                get_structured_tracker,
+            )
+
+            tool_calls = extract_tool_calls(result)
+            tracker = get_structured_tracker()
+
+            # Track each tool call
+            tool_call_infos = []
+            for tc in tool_calls:
+                tracker.record_tool_call(
+                    model=model,
+                    tool_name=tc.name,
+                    success=True,
+                    latency_ms=latency_ms,
+                )
+                tool_call_infos.append({
+                    "name": tc.name,
+                    "arguments": tc.arguments,
+                })
+
+            # If no tool calls were made, track as a regular response
+            if not tool_calls:
+                tracker.record_tool_call(
+                    model=model,
+                    tool_name="none",
+                    success=True,
+                    latency_ms=latency_ms,
+                )
+
+            # Log to database
+            response_text = content or json.dumps(tool_call_infos)
+            await log_chat_request(
+                request_id=request_id,
+                model=model,
+                prompt=prompt_for_log,
+                response=response_text,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=latency_ms,
+                status="success",
+            )
+
+            return {
+                "request_id": request_id,
+                "model": model,
+                "message": message,
+                "tool_calls": tool_call_infos,
+                "content": content or None,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "latency_ms": latency_ms,
+            }
+
+        except httpx.HTTPStatusError as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            await log_chat_request(
+                request_id=request_id,
+                model=model,
+                prompt=prompt_for_log,
+                response="",
+                prompt_tokens=0,
+                completion_tokens=0,
+                latency_ms=latency_ms,
+                status="error",
+                error_message=str(e),
+            )
+            raise HTTPException(status_code=e.response.status_code, detail=str(e))
+        except Exception as e:
+            latency_ms = int((time.time() - start_time) * 1000)
+            await log_chat_request(
+                request_id=request_id,
+                model=model,
+                prompt=prompt_for_log,
+                response="",
+                prompt_tokens=0,
+                completion_tokens=0,
+                latency_ms=latency_ms,
+                status="error",
+                error_message=str(e),
+            )
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get(
+        "/api/structured/stats",
+        tags=["Structured Output"],
+        summary="Structured output & tool calling statistics",
+        description="Get statistics on structured output validation and tool call usage.",
+    )
+    async def get_structured_stats():
+        """Get structured output and tool calling statistics."""
+        from ollama_local_serve.api.structured import get_structured_tracker
+
+        tracker = get_structured_tracker()
+        return tracker.get_stats()
+
+    # ========================================================================
+    # Smart Model Router Endpoints
+    # ========================================================================
+
+    @app.get(
+        "/api/router/config",
+        tags=["Router"],
+        summary="Get router configuration",
+        description="Get the current smart model router configuration and rules.",
+    )
+    async def get_router_config():
+        """Get current router configuration."""
+        if not _model_router:
+            return {"enabled": False, "message": "Router is not enabled"}
+        return _model_router.config.to_dict()
+
+    @app.put(
+        "/api/router/config",
+        tags=["Router"],
+        summary="Update router configuration",
+        description="Update routing rules at runtime.",
+    )
+    async def update_router_config(request: Request):
+        """Update router configuration at runtime."""
+        if not _model_router:
+            raise HTTPException(status_code=400, detail="Router is not enabled")
+
+        body = await request.json()
+        try:
+            from ollama_local_serve.router import RouterConfig, RoutingRule
+
+            new_config = RouterConfig(
+                enabled=body.get("enabled", True),
+                default_model=body.get("default_model", _model_router.config.default_model),
+                fallback_model=body.get("fallback_model", _model_router.config.fallback_model),
+                strategy=body.get("strategy", _model_router.config.strategy),
+                rules=[RoutingRule(**r) for r in body.get("rules", [])],
+            )
+            _model_router.config = new_config
+            return new_config.to_dict()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid config: {e}")
+
+    @app.get(
+        "/api/router/stats",
+        tags=["Router"],
+        summary="Get routing statistics",
+        description="Get statistics on routing decisions including model selection counts.",
+    )
+    async def get_router_stats():
+        """Get router decision statistics."""
+        if not _model_router:
+            return {"enabled": False, "total_decisions": 0}
+        return _model_router.get_stats()
 
     # ========================================================================
     # Ollama-Compatible Proxy Endpoints (for direct Ollama API compatibility)

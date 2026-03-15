@@ -6,7 +6,7 @@ instrumentation, database connections, and API server configuration.
 All settings can be loaded from environment variables.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -342,6 +342,15 @@ class AppConfig(BaseSettings):
     def logging(self) -> LoggingConfig:
         """Get logging configuration."""
         return LoggingConfig()
+
+    @computed_field
+    @property
+    def router(self) -> Any:
+        """Get router configuration."""
+        from ollama_local_serve.router.config import RouterConfig
+
+        config = RouterConfig()
+        return config.load_from_yaml()
 
 
 # Convenience function to get configuration

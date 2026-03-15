@@ -62,6 +62,17 @@ api = [
     "python-multipart>=0.0.6",
     "python-dotenv>=1.0.0",
     "orjson>=3.9.0",
+    "jsonschema>=4.0.0",
+]
+
+# Smart model router
+router = [
+    "pyyaml>=6.0.0",
+]
+
+# MCP server
+mcp = [
+    "mcp>=1.0.0",
 ]
 
 # OpenTelemetry instrumentation
@@ -101,7 +112,7 @@ monitoring = [
 
 # All features
 all = [
-    "ollama-local-serve[langgraph,monitoring]",
+    "ollama-local-serve[langgraph,monitoring,router,mcp]",
 ]
 
 # Development dependencies
@@ -131,9 +142,10 @@ Issues = "https://github.com/AbhinaavRamesh/ollama-local-serve/issues"
 
 [project.scripts]
 ollama-monitor = "ollama_local_serve.api.server:main"
+ollama-mcp = "ollama_local_serve.mcp_server:main"
 
 [tool.setuptools]
-packages = ["ollama_local_serve", "ollama_local_serve.api", "ollama_local_serve.instrumentation", "ollama_local_serve.exporters"]
+packages = ["ollama_local_serve", "ollama_local_serve.api", "ollama_local_serve.instrumentation", "ollama_local_serve.exporters", "ollama_local_serve.router"]
 
 [tool.setuptools.package-data]
 ollama_local_serve = ["py.typed"]

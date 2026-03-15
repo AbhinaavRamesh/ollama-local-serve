@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ollama-local-serve": {
+      "command": "python",
+      "args": ["-m", "ollama_local_serve.mcp_server"],
+      "env": {
+        "OLLAMA_HOST": "http://localhost:11434",
+        "API_HOST": "http://localhost:8000"
+      }
+    }
+  }
+}

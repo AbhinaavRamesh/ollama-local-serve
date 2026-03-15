@@ -120,6 +120,82 @@ class ChatResponse(BaseModel):
     latency_ms: int = Field(..., description="Latency in milliseconds")
 
 
+# ============================================================================
+# Structured Output & Tool Calling Models
+# ============================================================================
+
+
+class StructuredChatRequest(BaseModel):
+    """Chat request with JSON Schema structured output enforcement."""
+
+    model: str = Field(..., description="Model to use")
+    messages: list[dict[str, Any]] = Field(..., description="Chat messages array")
+    format: dict[str, Any] = Field(
+        ..., description="JSON Schema to enforce on the response"
+    )
+    stream: bool = Field(False, description="Whether to stream (only non-streaming supported)")
+    options: dict[str, Any] | None = Field(None, description="Ollama model options")
+
+
+class ToolDefinition(BaseModel):
+    """Tool definition for tool calling."""
+
+    type: str = Field("function", description="Tool type")
+    function: dict[str, Any] = Field(..., description="Function definition with name, description, parameters")
+
+
+class ToolCallRequest(BaseModel):
+    """Chat request with tool calling."""
+
+    model: str = Field(..., description="Model to use")
+    messages: list[dict[str, Any]] = Field(..., description="Chat messages array")
+    tools: list[ToolDefinition] = Field(..., description="Available tools")
+    stream: bool = Field(False, description="Whether to stream (only non-streaming supported)")
+    options: dict[str, Any] | None = Field(None, description="Ollama model options")
+
+
+class ToolCallInfo(BaseModel):
+    """Information about a tool call made by the model."""
+
+    name: str = Field(..., description="Tool function name")
+    arguments: dict[str, Any] = Field(default_factory=dict, description="Tool arguments")
+
+
+class StructuredChatResponse(BaseModel):
+    """Response from structured output chat."""
+
+    request_id: str = Field(..., description="Unique request identifier")
+    model: str = Field(..., description="Model used")
+    response: dict[str, Any] = Field(..., description="Structured response data")
+    schema_valid: bool = Field(..., description="Whether response passed schema validation")
+    validation_errors: list[str] = Field(default_factory=list, description="Schema validation errors")
+    prompt_tokens: int = Field(0, description="Prompt token count")
+    completion_tokens: int = Field(0, description="Completion token count")
+    latency_ms: int = Field(..., description="Latency in milliseconds")
+
+
+class ToolCallResponse(BaseModel):
+    """Response from tool calling chat."""
+
+    request_id: str = Field(..., description="Unique request identifier")
+    model: str = Field(..., description="Model used")
+    message: dict[str, Any] = Field(..., description="Full message from model")
+    tool_calls: list[ToolCallInfo] = Field(default_factory=list, description="Tool calls made by model")
+    content: str | None = Field(None, description="Text content if no tool calls")
+    prompt_tokens: int = Field(0, description="Prompt token count")
+    completion_tokens: int = Field(0, description="Completion token count")
+    latency_ms: int = Field(..., description="Latency in milliseconds")
+
+
+class StructuredStatsResponse(BaseModel):
+    """Statistics for structured outputs and tool calls."""
+
+    structured_outputs: dict[str, Any] = Field(..., description="Structured output statistics")
+    tool_calls: dict[str, Any] = Field(..., description="Tool call statistics")
+    by_model: dict[str, Any] = Field(default_factory=dict, description="Per-model breakdown")
+    total_requests: int = Field(0, description="Total structured/tool call requests")
+
+
 class LogsResponse(BaseModel):
     """Paginated request logs response."""
 
