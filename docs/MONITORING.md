@@ -64,6 +64,22 @@ PUT  /api/models/repository/{name}  - Update model (favorite, default)
 POST /api/models/repository/sync    - Sync with installed models
 ```
 
+### Structured Outputs & Tool Calling
+
+```
+POST /api/chat/structured   - Chat with JSON Schema enforcement
+POST /api/chat/tools        - Chat with tool calling
+GET  /api/structured/stats  - Structured output & tool call statistics
+```
+
+### Smart Model Router
+
+```
+GET  /api/router/config   - Get router configuration and rules
+PUT  /api/router/config   - Update routing rules at runtime
+GET  /api/router/stats    - Get routing decision statistics
+```
+
 ### Data Management
 
 ```

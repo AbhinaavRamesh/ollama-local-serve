@@ -358,6 +358,217 @@ curl -X PUT http://localhost:8000/api/models/repository/llama3.2 \
 }
 ```
 
+### Structured Outputs & Tool Calling
+
+```
+POST /api/chat/structured   - Chat with JSON Schema enforcement
+POST /api/chat/tools        - Chat with tool calling
+GET  /api/structured/stats  - Structured output & tool call statistics
+```
+
+#### Structured Output Chat
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/chat/structured \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "llama3.2",
+    "messages": [{"role": "user", "content": "What is the capital of France?"}],
+    "format": {
+      "type": "object",
+      "properties": {
+        "answer": {"type": "string"},
+        "confidence": {"type": "number"}
+      },
+      "required": ["answer", "confidence"]
+    }
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "request_id": "abc-123",
+  "model": "llama3.2",
+  "response": {
+    "answer": "Paris",
+    "confidence": 0.99
+  },
+  "schema_valid": true,
+  "validation_errors": [],
+  "prompt_tokens": 25,
+  "completion_tokens": 12,
+  "latency_ms": 850
+}
+```
+
+#### Tool Calling Chat
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/api/chat/tools \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "llama3.2",
+    "messages": [{"role": "user", "content": "What is the weather in San Francisco?"}],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get weather for a location",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {"type": "string", "description": "City name"}
+            },
+            "required": ["location"]
+          }
+        }
+      }
+    ]
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "request_id": "def-456",
+  "model": "llama3.2",
+  "message": {
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+      {
+        "function": {
+          "name": "get_weather",
+          "arguments": {"location": "San Francisco"}
+        }
+      }
+    ]
+  },
+  "tool_calls": [
+    {"name": "get_weather", "arguments": {"location": "San Francisco"}}
+  ],
+  "content": null,
+  "prompt_tokens": 150,
+  "completion_tokens": 25,
+  "latency_ms": 920
+}
+```
+
+#### Structured Output & Tool Call Statistics
+
+**Request:**
+```bash
+curl http://localhost:8000/api/structured/stats
+```
+
+**Response (200 OK):**
+```json
+{
+  "structured_outputs": {
+    "total": 42,
+    "valid": 40,
+    "invalid": 2,
+    "validation_rate": 95.2,
+    "avg_latency_ms": 890
+  },
+  "tool_calls": {
+    "total": 15,
+    "success": 14,
+    "failure": 1,
+    "success_rate": 93.3,
+    "avg_latency_ms": 1050,
+    "by_tool": {
+      "get_weather": {"total": 8, "success": 8, "failure": 0},
+      "search": {"total": 7, "success": 6, "failure": 1}
+    }
+  },
+  "by_model": {
+    "llama3.2": {"structured": 30, "tool_calls": 10},
+    "mistral": {"structured": 12, "tool_calls": 5}
+  },
+  "total_requests": 57
+}
+```
+
+### Smart Model Router
+
+```
+GET  /api/router/config   - Get router configuration and rules
+PUT  /api/router/config   - Update routing rules at runtime
+GET  /api/router/stats    - Get routing decision statistics
+```
+
+#### Get Router Configuration
+
+**Request:**
+```bash
+curl http://localhost:8000/api/router/config
+```
+
+**Response (200 OK):**
+```json
+{
+  "enabled": true,
+  "default_model": "llama3.2",
+  "fallback_model": "llama3.2",
+  "strategy": "priority",
+  "rules": [
+    {
+      "task_type": "code",
+      "models": ["deepseek-coder-v2", "codellama"],
+      "keywords": ["code", "function", "bug", "implement"]
+    },
+    {
+      "task_type": "reasoning",
+      "models": ["deepseek-r1", "qwen2.5"],
+      "keywords": ["think", "analyze", "reason", "step by step"]
+    }
+  ]
+}
+```
+
+#### Update Router Configuration
+
+**Request:**
+```bash
+curl -X PUT http://localhost:8000/api/router/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "default_model": "llama3.2",
+    "strategy": "round-robin",
+    "rules": [
+      {
+        "task_type": "code",
+        "models": ["codellama", "deepseek-coder-v2"],
+        "keywords": ["code", "function", "debug"]
+      }
+    ]
+  }'
+```
+
+#### Get Routing Statistics
+
+**Request:**
+```bash
+curl http://localhost:8000/api/router/stats
+```
+
+**Response (200 OK):**
+```json
+{
+  "total_decisions": 150,
+  "by_model": {"llama3.2": 80, "codellama": 45, "deepseek-r1": 25},
+  "by_task_type": {"code": 45, "chat": 80, "reasoning": 25},
+  "by_reason": {"matched_code": 45, "matched_chat": 80, "default_model": 25},
+  "fallback_rate": 3.5
+}
+```
+
 ### Data Management
 
 ```

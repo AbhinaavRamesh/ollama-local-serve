@@ -198,6 +198,57 @@ def cors_origins_list(self):
     return config.cors_origins_list
 ```
 
+### RouterConfig
+
+Smart model router configuration. Can load rules from a YAML file.
+
+**Attributes:**
+- `enabled: bool` - Enable smart routing (default: False)
+- `default_model: str` - Default model when no rule matches (default: "llama3.2")
+- `fallback_model: str | None` - Fallback model when primary is unavailable (default: None)
+- `strategy: str` - Routing strategy: "priority" or "round-robin" (default: "priority")
+- `rules: list[RoutingRule]` - List of routing rules
+- `config_path: str | None` - Path to YAML config file
+
+**Environment Variables (prefix `ROUTER_`):**
+- `ROUTER_ENABLED` - Enable the router
+- `ROUTER_DEFAULT_MODEL` - Default model name
+- `ROUTER_FALLBACK_MODEL` - Fallback model name
+- `ROUTER_STRATEGY` - Routing strategy
+- `ROUTER_CONFIG_PATH` - Path to YAML config file
+
+**Usage:**
+
+```python
+from ollama_local_serve.router.config import RouterConfig
+
+# Load from environment variables
+config = RouterConfig()
+
+# Load from YAML file
+config = RouterConfig(config_path="router_config.yaml")
+config = config.load_from_yaml()
+```
+
+**YAML Config Example (`router_config.yaml`):**
+
+```yaml
+enabled: true
+default_model: "llama3.2"
+fallback_model: "llama3.2"
+strategy: "priority"
+rules:
+  - task_type: "code"
+    models: ["deepseek-coder-v2", "codellama"]
+    keywords: ["code", "function", "bug", "implement", "debug"]
+  - task_type: "reasoning"
+    models: ["deepseek-r1", "qwen2.5"]
+    keywords: ["think", "analyze", "reason", "step by step"]
+  - task_type: "chat"
+    models: ["llama3.2", "gemma2"]
+    keywords: ["hello", "help", "explain", "summarize"]
+```
+
 ### AppConfig
 
 Top-level configuration combining all sub-configs.
@@ -216,6 +267,7 @@ print(config.clickhouse.connection_url)
 print(config.postgres.connection_url)
 print(config.api.cors_origins_list)
 print(config.instrumentation.enable_instrumentation)
+print(config.router.enabled)
 ```
 
 ## Environment File Examples
