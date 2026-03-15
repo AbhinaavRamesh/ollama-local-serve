@@ -8,6 +8,9 @@ Local LLM infrastructure with a professional monitoring dashboard for distribute
 
 ## Features
 
+- **MCP Server**: Expose your infrastructure as a [Model Context Protocol](https://modelcontextprotocol.io) server — works with Claude Desktop, Cursor, and any MCP-compatible agent
+- **Smart Model Router**: Automatically route requests to the best model based on task type (code, chat, reasoning) with keyword matching, fallback chains, and load balancing
+- **Structured Outputs & Tool Calling**: JSON Schema enforcement on responses and Ollama-native tool calling with validation tracking
 - **Service Management**: Easy start/stop control of Ollama server instances
 - **Network Accessible**: Configure host/port for LAN accessibility
 - **LangChain Integration**: Seamless integration with LangChain for remote LLM clients
@@ -37,6 +40,12 @@ pip install ollama-local-serve[langchain]
 
 # With LangGraph integration (includes LangChain)
 pip install ollama-local-serve[langgraph]
+
+# With smart model router
+pip install ollama-local-serve[router]
+
+# With MCP server (for Claude Desktop, Cursor, etc.)
+pip install ollama-local-serve[mcp]
 
 # With full monitoring stack
 pip install ollama-local-serve[monitoring]
@@ -72,7 +81,7 @@ Ollama Local Serve is ideal for:
 - **Development & Testing**: Quick local LLM setup with integrated monitoring
 - **Research & Experimentation**: Compare models, track metrics, benchmark performance
 - **Small to Medium Scale Inference**: Single or small cluster deployments (10-100 concurrent users)
-- **AI Agent Development**: Build ReAct agents with LangChain/LangGraph integration
+- **AI Agent Development**: Build ReAct agents with LangChain/LangGraph integration, MCP tool access, and structured outputs
 - **Educational Projects**: Learn about LLMs, monitoring, distributed systems
 - **Internal Tools**: Deploy custom AI features within organizations
 - **Prototyping**: Fast iteration with live metrics and dashboard feedback
@@ -96,41 +105,49 @@ Ollama Local Serve is ideal for:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Client Applications                     │
-│  (Python Scripts, LangChain Agents, HTTP Clients, etc.)    │
+│  Python Scripts, LangChain Agents, HTTP Clients, MCP Agents │
 └────────────────┬────────────────────────────────────────────┘
                  │
-                 ├─────────────────┬─────────────────┐
-                 │                 │                 │
-        ┌────────▼────────┐   ┌───▼──────────┐  ┌──▼─────────────┐
-        │   FastAPI Server │   │  Ollama      │  │  React Dashboard
-        │   (Port 8000)    │   │  (Port 11434)│  │  (Port 3000/5173)
-        │                  │   │              │  │
-        │ REST API Layer   │   │ LLM Engine   │  │ Real-time UI
-        │ - Chat Endpoint  │   │ - Models     │  │ - Metrics Viz
-        │ - Stats/Metrics  │   │ - Generation │  │ - System Health
-        │ - Health Checks  │   │ - Streaming  │  │ - Model Mgmt
-        └────────┬─────────┘   └──────────────┘  └────────────────┘
-                 │
-        ┌────────▼──────────────────────────┐
-        │   Metrics Collection Layer        │
-        │   (OpenTelemetry Instrumentation) │
-        │   - Request tracking              │
-        │   - Token counting                │
-        │   - Performance metrics           │
-        │   - Error tracking                │
-        └────────┬──────────────────────────┘
-                 │
-        ┌────────▼──────────────────────────┐
-        │   Storage Layer (Choose one/both) │
-        ├──────────────────────────────────┤
-        │  ClickHouse (Time-series)        │
-        │  - Fast metrics queries           │
-        │  - Real-time aggregations         │
-        │                                   │
-        │  PostgreSQL/TimescaleDB (Query)  │
-        │  - Relational queries             │
-        │  - Model metadata                 │
-        └───────────────────────────────────┘
+    ┌────────────┼──────────────┬─────────────────┐
+    │            │              │                 │
+┌───▼────────┐ ┌▼──────────┐ ┌─▼──────────┐  ┌──▼─────────────┐
+│ MCP Server │ │ FastAPI    │ │  Ollama    │  │  React Dashboard
+│ (stdio)    │ │ (Port 8000)│ │ (Port 11434│  │  (Port 3000/5173)
+│            │ │            │ │            │  │
+│ 10 Tools   │ │ REST API   │ │ LLM Engine │  │ Real-time UI
+│ 2 Resources│ │ - Chat     │ │ - Models   │  │ - Metrics Viz
+│ Agent-ready│ │ - Router   │ │ - Generate │  │ - Router Status
+│            │ │ - Struct.  │ │ - Tools    │  │ - Tool Stats
+└────────────┘ │ - Stats    │ │ - Streaming│  │ - Model Mgmt
+               └─────┬──────┘ └────────────┘  └────────────────┘
+                     │
+            ┌────────▼──────────────────────────┐
+            │   Smart Model Router              │
+            │   - Keyword-based task routing     │
+            │   - Priority / round-robin         │
+            │   - Automatic fallback             │
+            └────────┬──────────────────────────┘
+                     │
+            ┌────────▼──────────────────────────┐
+            │   Metrics Collection Layer        │
+            │   (OpenTelemetry Instrumentation) │
+            │   - Request & routing tracking     │
+            │   - Token counting                │
+            │   - Structured output validation  │
+            │   - Tool call monitoring          │
+            └────────┬──────────────────────────┘
+                     │
+            ┌────────▼──────────────────────────┐
+            │   Storage Layer (Choose one/both) │
+            ├──────────────────────────────────┤
+            │  ClickHouse (Time-series)        │
+            │  - Fast metrics queries           │
+            │  - Real-time aggregations         │
+            │                                   │
+            │  PostgreSQL/TimescaleDB (Query)  │
+            │  - Relational queries             │
+            │  - Model metadata                 │
+            └───────────────────────────────────┘
 ```
 
 ## Common Workflows
@@ -154,6 +171,33 @@ async with OllamaService() as service:
 cd k8s
 helm install ollama-serve . -n production -f values.yaml
 # Configure ingress, GPU, and database backends
+```
+
+### MCP Server (for Claude Desktop / Cursor / Agents)
+```bash
+pip install ollama-local-serve[mcp]
+ollama-mcp  # Starts stdio MCP server
+# Or configure in Claude Desktop with mcp_server_config.json
+```
+
+### Smart Model Routing
+```bash
+export ROUTER_ENABLED=true
+export ROUTER_CONFIG_PATH=router_config.yaml
+# Send model: "auto" to let the router pick the best model
+curl -X POST http://localhost:8000/api/chat \
+  -d '{"model": "auto", "messages": [{"role": "user", "content": "Write a Python function"}]}'
+```
+
+### Structured Outputs & Tool Calling
+```bash
+# Get JSON Schema-enforced responses
+curl -X POST http://localhost:8000/api/chat/structured \
+  -d '{"model": "llama3.2", "messages": [{"role": "user", "content": "..."}], "format": {"type": "object", ...}}'
+
+# Use tool calling
+curl -X POST http://localhost:8000/api/chat/tools \
+  -d '{"model": "llama3.2", "messages": [...], "tools": [...]}'
 ```
 
 ### Performance Benchmarking
@@ -188,11 +232,16 @@ ollama-local-serve/
 │   ├── config.py                # Pydantic configuration
 │   ├── service.py               # OllamaService class
 │   ├── client.py                # LangChain client
+│   ├── mcp_server.py            # MCP server for agents
 │   ├── exceptions.py            # Custom exceptions
 │   ├── api/                     # FastAPI server
 │   │   ├── server.py
 │   │   ├── models.py
+│   │   ├── structured.py        # Structured output & tool calling
 │   │   └── dependencies.py
+│   ├── router/                  # Smart model router
+│   │   ├── config.py
+│   │   └── router.py
 │   ├── instrumentation/         # OTEL instrumentation
 │   │   ├── metrics_provider.py
 │   │   └── tracer.py

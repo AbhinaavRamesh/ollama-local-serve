@@ -59,6 +59,12 @@ pip install ollama-local-serve[clickhouse]
 # With PostgreSQL exporter
 pip install ollama-local-serve[postgres]
 
+# With smart model router (YAML-based routing rules)
+pip install ollama-local-serve[router]
+
+# With MCP server (for Claude Desktop, Cursor, agents)
+pip install ollama-local-serve[mcp]
+
 # With full monitoring stack
 pip install ollama-local-serve[monitoring]
 

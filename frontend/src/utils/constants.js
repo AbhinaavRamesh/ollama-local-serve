@@ -89,6 +89,17 @@ export const API_ENDPOINTS = {
   },
   infrastructure: '/infrastructure',
   metrics: '/metrics',
+  // Smart router
+  router: {
+    config: '/router/config',
+    stats: '/router/stats',
+  },
+  // Structured outputs & tool calling
+  structured: {
+    stats: '/structured/stats',
+    chat: '/chat/structured',
+    tools: '/chat/tools',
+  },
 }
 
 // Chart color palette

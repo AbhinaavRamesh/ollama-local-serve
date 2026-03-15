@@ -16,6 +16,8 @@ import { ErrorState } from '../components/ui/EmptyState'
 import { SystemOverview } from '../components/dashboard/SystemOverview'
 import { PerformanceMetrics } from '../components/dashboard/PerformanceMetrics'
 import { InfrastructureHealth } from '../components/dashboard/InfrastructureHealth'
+import { RouterStatus } from '../components/dashboard/RouterStatus'
+import { StructuredOutputStats } from '../components/dashboard/StructuredOutputStats'
 import { useFetchStats } from '../hooks/useFetchStats'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import { useAppContext } from '../context/AppContext'
@@ -244,6 +246,12 @@ export function Overview() {
           loading={historyLoading}
           slaTarget={500}
         />
+      </div>
+
+      {/* Smart Router & Structured Output */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+        <RouterStatus refreshInterval={refreshInterval} />
+        <StructuredOutputStats refreshInterval={refreshInterval} />
       </div>
 
       {/* System Overview Section */}
