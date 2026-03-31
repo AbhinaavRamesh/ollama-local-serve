@@ -218,3 +218,6 @@ instance/
 
 ## Local References
 local_ref*
+
+# Claude Code
+.claude/
