@@ -321,8 +321,10 @@ class ModelRepositoryCreate(BaseModel):
 class ErrorResponse(BaseModel):
     """Error response model."""
 
-    error: str = Field(..., description="Error type")
-    message: str = Field(..., description="Error message")
+    error: str = Field(default="", description="Error type")
+    detail: str = Field(default="", description="Error detail message")
+    message: str = Field(default="", description="Error message")
+    status_code: int = Field(default=500, description="HTTP status code")
     details: dict[str, Any] | None = Field(None, description="Additional details")
 
 

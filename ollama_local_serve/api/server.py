@@ -19,6 +19,9 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from ollama_local_serve.api.middleware import APIKeyMiddleware, RateLimitMiddleware
+from ollama_local_serve.config import AppConfig
+
 from ollama_local_serve.api.dependencies import (
     DatabaseManager,
     close_database,
@@ -146,6 +149,28 @@ def create_app(
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+
+    # Configure authentication and rate limiting middleware
+    config = AppConfig()
+    security = config.security
+
+    application.add_middleware(
+        APIKeyMiddleware,
+        api_key=security.api_key,
+    )
+    application.add_middleware(
+        RateLimitMiddleware,
+        max_requests=security.rate_limit_requests,
+        window_seconds=security.rate_limit_window,
+    )
+
+    logger.info(
+        "Security middleware configured: auth=%s, rate_limit=%s",
+        "enabled" if security.api_key else "disabled",
+        f"{security.rate_limit_requests}/{security.rate_limit_window}s"
+        if security.rate_limit_requests > 0
+        else "disabled",
     )
 
     # Register routes
