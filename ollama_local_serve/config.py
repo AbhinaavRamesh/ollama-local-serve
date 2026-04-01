@@ -314,6 +314,26 @@ class LoggingConfig(BaseSettings):
         return upper_v
 
 
+class TemplateConfig(BaseSettings):
+    """
+    Configuration for prompt template library.
+
+    Attributes:
+        max_templates: Maximum number of templates allowed.
+        enable_versioning: Whether to track template version history.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="TEMPLATE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    max_templates: int = Field(default=500, ge=1, description="Maximum templates allowed")
+    enable_versioning: bool = Field(default=True, description="Enable version tracking")
+
+
 class AppConfig(BaseSettings):
     """
     Unified application configuration.
@@ -383,6 +403,12 @@ class AppConfig(BaseSettings):
     def logging(self) -> LoggingConfig:
         """Get logging configuration."""
         return LoggingConfig()
+
+    @computed_field
+    @property
+    def templates(self) -> TemplateConfig:
+        """Get template configuration."""
+        return TemplateConfig()
 
     @computed_field
     @property

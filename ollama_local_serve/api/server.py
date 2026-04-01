@@ -40,6 +40,18 @@ from ollama_local_serve.api.benchmark_models import (
     BenchmarkResponse,
     BenchmarkStatusResponse,
 )
+from ollama_local_serve.api.templates import get_template_manager
+from ollama_local_serve.api.template_models import (
+    CreateTemplateRequest,
+    RenderTemplateRequest,
+    RenderTemplateResponse,
+    TemplateChatRequest,
+    TemplateListResponse,
+    TemplateResponse,
+    TemplateVersionsListResponse,
+    TemplateVersionResponse,
+    UpdateTemplateRequest,
+)
 from ollama_local_serve.api.models import (
     ChatRequest,
     ConfigResponse,
@@ -2046,6 +2058,273 @@ def _register_routes(app: FastAPI) -> None:
                 "details": None,
             },
         )
+
+    # ========================================================================
+    # Prompt Templates
+    # ========================================================================
+
+    @app.post(
+        "/api/templates",
+        response_model=TemplateResponse,
+        tags=["Templates"],
+        summary="Create a new prompt template",
+    )
+    async def create_template(req: CreateTemplateRequest):
+        """Create a new prompt template with {variable} placeholders."""
+        manager = get_template_manager()
+        try:
+            template = manager.create_template(
+                name=req.name,
+                content=req.content,
+                description=req.description,
+                category=req.category,
+                tags=req.tags,
+                variables=req.variables if req.variables else None,
+            )
+        except ValueError as e:
+            msg = str(e)
+            if "already exists" in msg:
+                raise HTTPException(status_code=409, detail=msg)
+            raise HTTPException(status_code=400, detail=msg)
+
+        return TemplateResponse(
+            template_id=template.template_id,
+            name=template.name,
+            content=template.content,
+            description=template.description,
+            category=template.category,
+            tags=template.tags,
+            variables=template.variables,
+            version=template.version,
+            created_at=datetime.fromtimestamp(template.created_at),
+            updated_at=datetime.fromtimestamp(template.updated_at),
+        )
+
+    @app.get(
+        "/api/templates",
+        response_model=TemplateListResponse,
+        tags=["Templates"],
+        summary="List prompt templates",
+    )
+    async def list_templates(
+        category: str | None = Query(default=None, description="Filter by category"),
+        tag: str | None = Query(default=None, description="Filter by tag"),
+        limit: int = Query(default=50, ge=1, description="Maximum results"),
+        offset: int = Query(default=0, ge=0, description="Offset for pagination"),
+    ):
+        """List prompt templates with optional filtering."""
+        manager = get_template_manager()
+        all_templates = manager.list_templates(category=category, tag=tag)
+        total = len(all_templates)
+        page = all_templates[offset : offset + limit]
+
+        return TemplateListResponse(
+            templates=[
+                TemplateResponse(
+                    template_id=t.template_id,
+                    name=t.name,
+                    content=t.content,
+                    description=t.description,
+                    category=t.category,
+                    tags=t.tags,
+                    variables=t.variables,
+                    version=t.version,
+                    created_at=datetime.fromtimestamp(t.created_at),
+                    updated_at=datetime.fromtimestamp(t.updated_at),
+                )
+                for t in page
+            ],
+            total=total,
+        )
+
+    @app.get(
+        "/api/templates/{template_id}",
+        response_model=TemplateResponse,
+        tags=["Templates"],
+        summary="Get a prompt template by ID",
+    )
+    async def get_template(template_id: str):
+        """Get a single prompt template by its ID."""
+        manager = get_template_manager()
+        template = manager.get_template(template_id)
+        if template is None:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        return TemplateResponse(
+            template_id=template.template_id,
+            name=template.name,
+            content=template.content,
+            description=template.description,
+            category=template.category,
+            tags=template.tags,
+            variables=template.variables,
+            version=template.version,
+            created_at=datetime.fromtimestamp(template.created_at),
+            updated_at=datetime.fromtimestamp(template.updated_at),
+        )
+
+    @app.put(
+        "/api/templates/{template_id}",
+        response_model=TemplateResponse,
+        tags=["Templates"],
+        summary="Update a prompt template",
+    )
+    async def update_template(template_id: str, req: UpdateTemplateRequest):
+        """Update an existing prompt template."""
+        manager = get_template_manager()
+        template = manager.update_template(
+            template_id=template_id,
+            content=req.content,
+            description=req.description,
+            category=req.category,
+            tags=req.tags,
+            variables=req.variables,
+        )
+        if template is None:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        return TemplateResponse(
+            template_id=template.template_id,
+            name=template.name,
+            content=template.content,
+            description=template.description,
+            category=template.category,
+            tags=template.tags,
+            variables=template.variables,
+            version=template.version,
+            created_at=datetime.fromtimestamp(template.created_at),
+            updated_at=datetime.fromtimestamp(template.updated_at),
+        )
+
+    @app.delete(
+        "/api/templates/{template_id}",
+        tags=["Templates"],
+        summary="Delete a prompt template",
+    )
+    async def delete_template(template_id: str):
+        """Delete a prompt template by ID."""
+        manager = get_template_manager()
+        deleted = manager.delete_template(template_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Template not found")
+        return {"deleted": True}
+
+    @app.get(
+        "/api/templates/{template_id}/versions",
+        response_model=TemplateVersionsListResponse,
+        tags=["Templates"],
+        summary="Get template version history",
+    )
+    async def get_template_versions(template_id: str):
+        """Get version history for a prompt template."""
+        manager = get_template_manager()
+        template = manager.get_template(template_id)
+        if template is None:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        versions = manager.get_versions(template_id)
+        return TemplateVersionsListResponse(
+            template_id=template_id,
+            versions=[
+                TemplateVersionResponse(
+                    version=v.version,
+                    content=v.content,
+                    updated_at=datetime.fromtimestamp(v.updated_at),
+                )
+                for v in versions
+            ],
+        )
+
+    @app.post(
+        "/api/templates/render",
+        response_model=RenderTemplateResponse,
+        tags=["Templates"],
+        summary="Render a template with variables",
+    )
+    async def render_template(req: RenderTemplateRequest):
+        """Render a prompt template by substituting variable placeholders."""
+        manager = get_template_manager()
+        template = manager.get_template(req.template_id)
+        if template is None:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        try:
+            rendered = manager.render(template.content, req.variables)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        return RenderTemplateResponse(
+            template_id=req.template_id,
+            rendered=rendered,
+            variables_used=req.variables,
+        )
+
+    @app.post(
+        "/api/templates/chat",
+        tags=["Templates"],
+        summary="Chat using a rendered template",
+    )
+    async def template_chat(req: TemplateChatRequest):
+        """Render a template and send it as a chat message to Ollama."""
+        manager = get_template_manager()
+        template = manager.get_template(req.template_id)
+        if template is None:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+        try:
+            rendered = manager.render(template.content, req.variables)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        ollama_body = {
+            "model": req.model,
+            "messages": [{"role": "user", "content": rendered}],
+            "stream": req.stream,
+        }
+        if req.options:
+            ollama_body["options"] = req.options
+
+        if req.stream:
+
+            async def stream_ollama():
+                try:
+                    async with httpx.AsyncClient(timeout=None) as client:
+                        async with client.stream(
+                            "POST",
+                            f"{OLLAMA_HOST}/api/chat",
+                            json=ollama_body,
+                        ) as response:
+                            response.raise_for_status()
+                            async for line in response.aiter_lines():
+                                if line:
+                                    yield line + "\n"
+                except Exception as e:
+                    yield json.dumps({"error": str(e)}) + "\n"
+
+            return StreamingResponse(
+                stream_ollama(),
+                media_type="application/x-ndjson",
+            )
+        else:
+            try:
+                async with httpx.AsyncClient(timeout=None) as client:
+                    response = await client.post(
+                        f"{OLLAMA_HOST}/api/chat",
+                        json=ollama_body,
+                    )
+                    response.raise_for_status()
+                    return response.json()
+            except httpx.HTTPStatusError as e:
+                raise HTTPException(
+                    status_code=e.response.status_code,
+                    detail=f"Ollama error: {e.response.text}",
+                )
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Ollama error: {str(e)}")
+
+    # ========================================================================
+    # Error Handlers
+    # ========================================================================
 
     @app.exception_handler(Exception)
     async def general_exception_handler(request, exc):
