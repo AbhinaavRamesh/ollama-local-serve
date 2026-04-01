@@ -34,6 +34,12 @@ from ollama_local_serve.api.gpu_monitor import (
     get_system_monitor,
 )
 from ollama_local_serve.api.metrics_collector import get_metrics_collector
+from ollama_local_serve.api.benchmark import get_benchmark_runner
+from ollama_local_serve.api.benchmark_models import (
+    BenchmarkRequest,
+    BenchmarkResponse,
+    BenchmarkStatusResponse,
+)
 from ollama_local_serve.api.models import (
     ChatRequest,
     ConfigResponse,
@@ -1963,6 +1969,67 @@ def _register_routes(app: FastAPI) -> None:
             "status": "cleared",
             "results": results,
         }
+
+    # ========================================================================
+    # Benchmarking
+    # ========================================================================
+
+    @app.post(
+        "/api/v1/benchmark/run",
+        response_model=BenchmarkResponse,
+        tags=["Benchmarking"],
+        summary="Run a model benchmark",
+        description=(
+            "Start a benchmark comparing one or more models across a set of prompts. "
+            "This can be long-running depending on model count and iterations."
+        ),
+    )
+    async def run_benchmark(request: BenchmarkRequest):
+        """Run a benchmark across the specified models and prompts."""
+        runner = get_benchmark_runner(ollama_base_url=OLLAMA_HOST)
+        try:
+            result = await runner.run(
+                models=request.models,
+                prompts=request.prompts,
+                iterations=request.iterations,
+                max_tokens=request.max_tokens,
+            )
+            return result
+        except RuntimeError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except Exception as e:
+            logger.error(f"Benchmark failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Benchmark failed: {e}")
+
+    @app.get(
+        "/api/v1/benchmark/status",
+        response_model=BenchmarkStatusResponse,
+        tags=["Benchmarking"],
+        summary="Check benchmark status",
+        description="Check if a benchmark is currently running and view its progress.",
+    )
+    async def get_benchmark_status():
+        """Get the current benchmark status."""
+        runner = get_benchmark_runner(ollama_base_url=OLLAMA_HOST)
+        return runner.get_status()
+
+    @app.get(
+        "/api/v1/benchmark/results",
+        response_model=BenchmarkResponse,
+        tags=["Benchmarking"],
+        summary="Get latest benchmark results",
+        description="Retrieve the results of the most recently completed benchmark run.",
+    )
+    async def get_benchmark_results():
+        """Get the latest benchmark results."""
+        runner = get_benchmark_runner(ollama_base_url=OLLAMA_HOST)
+        result = runner.get_latest_result()
+        if result is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No benchmark results available. Run a benchmark first.",
+            )
+        return result
 
     # ========================================================================
     # Error Handlers
