@@ -314,6 +314,43 @@ class LoggingConfig(BaseSettings):
         return upper_v
 
 
+class ConversationConfig(BaseSettings):
+    """
+    Configuration for conversation memory and session management.
+
+    Attributes:
+        max_sessions: Maximum number of concurrent sessions.
+        default_ttl_seconds: Default session time-to-live in seconds.
+        max_messages_per_session: Maximum messages stored per session.
+        default_context_strategy: Default context building strategy.
+        context_window_size: Number of recent messages for sliding_window strategy.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="CONVERSATION_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    max_sessions: int = Field(
+        default=100, ge=1, description="Maximum concurrent sessions"
+    )
+    default_ttl_seconds: int = Field(
+        default=3600, ge=60, description="Default session TTL in seconds"
+    )
+    max_messages_per_session: int = Field(
+        default=200, ge=10, description="Maximum messages per session"
+    )
+    default_context_strategy: str = Field(
+        default="sliding_window",
+        description="Default context strategy (sliding_window or full)",
+    )
+    context_window_size: int = Field(
+        default=20, ge=1, description="Messages in sliding window"
+    )
+
+
 class AppConfig(BaseSettings):
     """
     Unified application configuration.
@@ -377,6 +414,12 @@ class AppConfig(BaseSettings):
     def security(self) -> SecurityConfig:
         """Get security configuration."""
         return SecurityConfig()
+
+    @computed_field
+    @property
+    def conversation(self) -> ConversationConfig:
+        """Get conversation configuration."""
+        return ConversationConfig()
 
     @computed_field
     @property

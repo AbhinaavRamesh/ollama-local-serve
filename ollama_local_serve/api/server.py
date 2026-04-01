@@ -40,6 +40,15 @@ from ollama_local_serve.api.benchmark_models import (
     BenchmarkResponse,
     BenchmarkStatusResponse,
 )
+from ollama_local_serve.api.conversation import get_conversation_manager
+from ollama_local_serve.api.conversation_models import (
+    CreateSessionRequest,
+    SessionChatRequest,
+    SessionListResponse,
+    SessionMessagesResponse,
+    SessionResponse,
+    MessageModel,
+)
 from ollama_local_serve.api.models import (
     ChatRequest,
     ConfigResponse,
@@ -94,6 +103,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to start metrics history collection: {e}")
 
+    # Start conversation session TTL cleanup
+    try:
+        conv_manager = get_conversation_manager()
+        await conv_manager.start_cleanup()
+        logger.info("Conversation TTL cleanup started")
+    except Exception as e:
+        logger.warning(f"Failed to start conversation cleanup: {e}")
+
     yield
 
     # Shutdown
@@ -103,6 +120,13 @@ async def lifespan(app: FastAPI):
     try:
         history = get_system_metrics_history()
         await history.stop_collection()
+    except Exception:
+        pass  # Ignore errors during shutdown
+
+    # Stop conversation cleanup
+    try:
+        conv_manager = get_conversation_manager()
+        await conv_manager.stop_cleanup()
     except Exception:
         pass  # Ignore errors during shutdown
 
@@ -2030,6 +2054,196 @@ def _register_routes(app: FastAPI) -> None:
                 detail="No benchmark results available. Run a benchmark first.",
             )
         return result
+
+    # ========================================================================
+    # Conversation Sessions
+    # ========================================================================
+
+    @app.post(
+        "/api/sessions",
+        response_model=SessionResponse,
+        tags=["Conversations"],
+        summary="Create a new conversation session",
+        description="Create a new conversation session with a specified model and optional system prompt.",
+    )
+    async def create_session(request: CreateSessionRequest):
+        """Create a new conversation session."""
+        manager = get_conversation_manager()
+        session = await manager.create_session(
+            model=request.model,
+            system_prompt=request.system_prompt,
+            context_strategy=request.context_strategy,
+            ttl_seconds=request.ttl_seconds,
+        )
+        return SessionResponse(
+            session_id=session.id,
+            model=session.model,
+            system_prompt=session.system_prompt,
+            context_strategy=session.context_strategy,
+            message_count=session.message_count,
+            created_at=session.created_at,
+            last_active=session.last_active,
+            ttl_seconds=session.ttl_seconds,
+        )
+
+    @app.get(
+        "/api/sessions",
+        response_model=SessionListResponse,
+        tags=["Conversations"],
+        summary="List all active sessions",
+        description="List all active (non-expired) conversation sessions.",
+    )
+    async def list_sessions():
+        """List all active conversation sessions."""
+        manager = get_conversation_manager()
+        sessions = await manager.list_sessions()
+        return SessionListResponse(
+            sessions=[
+                SessionResponse(
+                    session_id=s.id,
+                    model=s.model,
+                    system_prompt=s.system_prompt,
+                    context_strategy=s.context_strategy,
+                    message_count=s.message_count,
+                    created_at=s.created_at,
+                    last_active=s.last_active,
+                    ttl_seconds=s.ttl_seconds,
+                )
+                for s in sessions
+            ],
+            total_count=len(sessions),
+        )
+
+    @app.get(
+        "/api/sessions/{session_id}",
+        response_model=SessionResponse,
+        tags=["Conversations"],
+        summary="Get a session by ID",
+        description="Retrieve details of a specific conversation session.",
+    )
+    async def get_session(session_id: str):
+        """Get a conversation session by ID."""
+        manager = get_conversation_manager()
+        session = await manager.get_session(session_id)
+        if session is None:
+            raise HTTPException(
+                status_code=404, detail=f"Session {session_id} not found or expired."
+            )
+        return SessionResponse(
+            session_id=session.id,
+            model=session.model,
+            system_prompt=session.system_prompt,
+            context_strategy=session.context_strategy,
+            message_count=session.message_count,
+            created_at=session.created_at,
+            last_active=session.last_active,
+            ttl_seconds=session.ttl_seconds,
+        )
+
+    @app.delete(
+        "/api/sessions/{session_id}",
+        tags=["Conversations"],
+        summary="Delete a session",
+        description="Delete a conversation session by ID.",
+    )
+    async def delete_session(session_id: str):
+        """Delete a conversation session."""
+        manager = get_conversation_manager()
+        deleted = await manager.delete_session(session_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=404, detail=f"Session {session_id} not found."
+            )
+        return {"status": "deleted", "session_id": session_id}
+
+    @app.get(
+        "/api/sessions/{session_id}/messages",
+        response_model=SessionMessagesResponse,
+        tags=["Conversations"],
+        summary="Get session messages",
+        description="Retrieve all messages from a conversation session.",
+    )
+    async def get_session_messages(session_id: str):
+        """Get all messages from a conversation session."""
+        manager = get_conversation_manager()
+        messages = await manager.get_messages(session_id)
+        if messages is None:
+            raise HTTPException(
+                status_code=404, detail=f"Session {session_id} not found or expired."
+            )
+        return SessionMessagesResponse(
+            session_id=session_id,
+            messages=[
+                MessageModel(
+                    role=m.role,
+                    content=m.content,
+                    timestamp=m.timestamp,
+                )
+                for m in messages
+            ],
+            total_count=len(messages),
+        )
+
+    @app.post(
+        "/api/sessions/{session_id}/chat",
+        tags=["Conversations"],
+        summary="Chat in a session",
+        description=(
+            "Send a message in a conversation session and receive an assistant response. "
+            "The session's context strategy determines how message history is sent to the model."
+        ),
+    )
+    async def session_chat(session_id: str, request: SessionChatRequest):
+        """Send a message in a session and get an assistant response."""
+        manager = get_conversation_manager()
+        session = await manager.get_session(session_id)
+        if session is None:
+            raise HTTPException(
+                status_code=404, detail=f"Session {session_id} not found or expired."
+            )
+
+        # Add the user message
+        await manager.add_message(session_id, role="user", content=request.content)
+
+        # Build context for Ollama
+        context_messages = manager.build_context(session)
+
+        # Call Ollama chat API
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                ollama_response = await client.post(
+                    f"{OLLAMA_HOST}/api/chat",
+                    json={
+                        "model": session.model,
+                        "messages": context_messages,
+                        "stream": False,
+                    },
+                )
+                ollama_response.raise_for_status()
+                data = ollama_response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Ollama API error: {e.response.status_code} - {e.response.text}",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to communicate with Ollama: {e}",
+            )
+
+        assistant_content = data.get("message", {}).get("content", "")
+        await manager.add_message(
+            session_id, role="assistant", content=assistant_content
+        )
+
+        return {
+            "session_id": session_id,
+            "role": "assistant",
+            "content": assistant_content,
+            "model": session.model,
+            "message_count": session.message_count,
+        }
 
     # ========================================================================
     # Error Handlers
