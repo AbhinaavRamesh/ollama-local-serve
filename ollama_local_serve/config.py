@@ -314,6 +314,39 @@ class LoggingConfig(BaseSettings):
         return upper_v
 
 
+class CacheConfig(BaseSettings):
+    """
+    Response cache configuration.
+
+    Attributes:
+        enabled: Whether response caching is enabled.
+        max_size: Maximum number of cached responses.
+        ttl_seconds: Time-to-live for cache entries in seconds.
+        excluded_models: Comma-separated list of models to exclude from caching.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="CACHE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    enabled: bool = Field(default=False, description="Enable response caching")
+    max_size: int = Field(default=256, ge=1, description="Maximum cached responses")
+    ttl_seconds: int = Field(default=300, gt=0, description="Cache TTL in seconds")
+    excluded_models: str = Field(
+        default="",
+        description="Comma-separated models to exclude from caching",
+    )
+
+    @computed_field
+    @property
+    def excluded_models_list(self) -> list[str]:
+        """Get excluded models as a list."""
+        return [m.strip() for m in self.excluded_models.split(",") if m.strip()]
+
+
 class AppConfig(BaseSettings):
     """
     Unified application configuration.
@@ -383,6 +416,12 @@ class AppConfig(BaseSettings):
     def logging(self) -> LoggingConfig:
         """Get logging configuration."""
         return LoggingConfig()
+
+    @computed_field
+    @property
+    def cache(self) -> CacheConfig:
+        """Get cache configuration."""
+        return CacheConfig()
 
     @computed_field
     @property

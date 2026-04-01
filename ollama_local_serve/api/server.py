@@ -40,6 +40,11 @@ from ollama_local_serve.api.benchmark_models import (
     BenchmarkResponse,
     BenchmarkStatusResponse,
 )
+from ollama_local_serve.api.cache import get_response_cache
+from ollama_local_serve.api.cache_models import (
+    CacheConfigUpdateRequest,
+    CacheStatsResponse,
+)
 from ollama_local_serve.api.models import (
     ChatRequest,
     ConfigResponse,
@@ -760,7 +765,26 @@ def _register_routes(app: FastAPI) -> None:
                     headers={"X-Request-ID": request_id},
                 )
             else:
-                # Non-streaming
+                # Non-streaming — check response cache first
+                cache = get_response_cache()
+                cache_params = {
+                    k: v
+                    for k, v in body.items()
+                    if k not in ("model", "messages", "stream")
+                }
+                cache_prompt = json.dumps(body.get("messages", []), sort_keys=True)
+
+                if cache.enabled:
+                    cached = cache.get(model, cache_prompt, cache_params)
+                    if cached is not None:
+                        return JSONResponse(
+                            content=cached,
+                            headers={
+                                "X-Request-ID": request_id,
+                                "X-Cache": "HIT",
+                            },
+                        )
+
                 try:
                     async with httpx.AsyncClient(timeout=None) as client:
                         response = await client.post(
@@ -794,7 +818,17 @@ def _register_routes(app: FastAPI) -> None:
                             referer=referer,
                         )
 
-                        return result
+                        # Store in cache
+                        if cache.enabled:
+                            cache.put(model, cache_prompt, cache_params, result)
+
+                        return JSONResponse(
+                            content=result,
+                            headers={
+                                "X-Request-ID": request_id,
+                                "X-Cache": "MISS",
+                            },
+                        )
                 except Exception as e:
                     raise HTTPException(status_code=500, detail=str(e))
         else:
@@ -1969,6 +2003,52 @@ def _register_routes(app: FastAPI) -> None:
             "status": "cleared",
             "results": results,
         }
+
+    # ========================================================================
+    # Cache Management
+    # ========================================================================
+
+    @app.get(
+        "/api/cache/stats",
+        response_model=CacheStatsResponse,
+        tags=["Cache"],
+        summary="Get cache statistics",
+        description="Returns current cache statistics including hit/miss rates and configuration.",
+    )
+    async def cache_stats():
+        """Get cache statistics."""
+        cache = get_response_cache()
+        return CacheStatsResponse(**cache.get_stats())
+
+    @app.post(
+        "/api/cache/clear",
+        tags=["Cache"],
+        summary="Clear the response cache",
+        description="Removes all entries from the response cache.",
+    )
+    async def cache_clear():
+        """Clear all cached responses."""
+        cache = get_response_cache()
+        count = cache.clear()
+        return {"cleared": count}
+
+    @app.put(
+        "/api/cache/config",
+        response_model=CacheStatsResponse,
+        tags=["Cache"],
+        summary="Update cache configuration",
+        description="Update cache settings at runtime (enable/disable, max size, TTL, excluded models).",
+    )
+    async def cache_config_update(update: CacheConfigUpdateRequest):
+        """Update cache configuration."""
+        cache = get_response_cache()
+        cache.update_config(
+            enabled=update.enabled,
+            max_size=update.max_size,
+            ttl_seconds=update.ttl_seconds,
+            excluded_models=update.excluded_models,
+        )
+        return CacheStatsResponse(**cache.get_stats())
 
     # ========================================================================
     # Benchmarking
