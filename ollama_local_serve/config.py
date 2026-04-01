@@ -249,6 +249,41 @@ class APIConfig(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
+class SecurityConfig(BaseSettings):
+    """
+    Security configuration for API authentication and rate limiting.
+
+    Attributes:
+        api_key: Optional API key for authentication. If not set, auth is disabled.
+        rate_limit_requests: Maximum requests per window. 0 disables rate limiting.
+        rate_limit_window: Rate limit window in seconds.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    api_key: str | None = Field(
+        default=None,
+        alias="API_KEY",
+        description="API key for authentication (None to disable)",
+    )
+    rate_limit_requests: int = Field(
+        default=0,
+        ge=0,
+        alias="RATE_LIMIT_REQUESTS",
+        description="Max requests per window (0 to disable)",
+    )
+    rate_limit_window: int = Field(
+        default=60,
+        gt=0,
+        alias="RATE_LIMIT_WINDOW",
+        description="Rate limit window in seconds",
+    )
+
+
 class LoggingConfig(BaseSettings):
     """
     Logging configuration.
@@ -336,6 +371,12 @@ class AppConfig(BaseSettings):
     def api(self) -> APIConfig:
         """Get API configuration."""
         return APIConfig()
+
+    @computed_field
+    @property
+    def security(self) -> SecurityConfig:
+        """Get security configuration."""
+        return SecurityConfig()
 
     @computed_field
     @property
