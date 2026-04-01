@@ -4,6 +4,7 @@ FastAPI monitoring server for Ollama Local Serve.
 Provides REST API endpoints for querying metrics, logs, and service health.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -15,11 +16,13 @@ from datetime import datetime
 from typing import Literal
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from ollama_local_serve.api.middleware import APIKeyMiddleware, RateLimitMiddleware
+from ollama_local_serve.api.websocket import get_connection_manager
+from ollama_local_serve.api.websocket_models import WSStatsResponse
 from ollama_local_serve.config import AppConfig
 
 from ollama_local_serve.api.dependencies import (
@@ -2030,6 +2033,47 @@ def _register_routes(app: FastAPI) -> None:
                 detail="No benchmark results available. Run a benchmark first.",
             )
         return result
+
+    # ========================================================================
+    # WebSocket Streaming
+    # ========================================================================
+
+    @app.websocket("/ws/chat")
+    async def websocket_chat(websocket: WebSocket):
+        """Bidirectional WebSocket endpoint for real-time chat with Ollama."""
+        mgr = get_connection_manager()
+        conn = await mgr.connect(websocket)
+        if conn is None:
+            return
+        heartbeat_task = asyncio.create_task(mgr._heartbeat_loop(conn.connection_id))
+        try:
+            while True:
+                raw = await websocket.receive_text()
+                data = json.loads(raw)
+                conn.messages_received += 1
+                conn.last_activity = time.time()
+                await mgr.handle_message(conn, data)
+        except WebSocketDisconnect:
+            pass
+        except json.JSONDecodeError:
+            await mgr.send_message(conn.connection_id, {"type": "error", "error": "Invalid JSON"})
+        except Exception as e:
+            logger.error(f"WebSocket error: {e}")
+        finally:
+            heartbeat_task.cancel()
+            await mgr.disconnect(conn.connection_id)
+
+    @app.get(
+        "/api/ws/stats",
+        response_model=WSStatsResponse,
+        tags=["WebSocket"],
+        summary="WebSocket connection statistics",
+        description="Get current WebSocket connection statistics and active connection details.",
+    )
+    async def get_ws_stats():
+        """Get WebSocket connection statistics."""
+        mgr = get_connection_manager()
+        return mgr.get_stats()
 
     # ========================================================================
     # Error Handlers

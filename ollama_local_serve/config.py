@@ -284,6 +284,28 @@ class SecurityConfig(BaseSettings):
     )
 
 
+class WebSocketConfig(BaseSettings):
+    """
+    WebSocket streaming configuration.
+
+    Attributes:
+        max_connections: Maximum number of concurrent WebSocket connections.
+        heartbeat_interval: Interval in seconds between heartbeat pings.
+        message_max_size: Maximum allowed message size in bytes.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="WS_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    max_connections: int = Field(default=100, ge=1, description="Max concurrent WebSocket connections")
+    heartbeat_interval: float = Field(default=30.0, gt=0, description="Heartbeat interval in seconds")
+    message_max_size: int = Field(default=65536, gt=0, description="Max message size in bytes")
+
+
 class LoggingConfig(BaseSettings):
     """
     Logging configuration.
@@ -383,6 +405,12 @@ class AppConfig(BaseSettings):
     def logging(self) -> LoggingConfig:
         """Get logging configuration."""
         return LoggingConfig()
+
+    @computed_field
+    @property
+    def websocket(self) -> WebSocketConfig:
+        """Get WebSocket configuration."""
+        return WebSocketConfig()
 
     @computed_field
     @property
